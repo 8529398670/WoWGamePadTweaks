@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="WOWGAMEPADTWEAKS_TOGGLE" header="WOWGAMEPADTWEAKS" category="ADDONS">
+		WowGamePadTweaks_TogglePanel()
+	</Binding>
+</Bindings>

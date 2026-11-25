@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: Wow GamePad Tweaks: Touch
+## Notes: Touch bars: buttons on the screen edges to tap on a touch screen (Steam Link). Needs Wow GamePad Tweaks.
+## Author: HouseLegend
+## Version: v1.5.4
+## Dependencies: WowGamePadTweaks
+## Group: WowGamePadTweaks
+## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon
+## Category: User Interface
+## X-License: MIT
+## X-Website: https://racha.github.io/forever-controller-tweaks/
+
+Touch.lua
+TouchTab.lua
