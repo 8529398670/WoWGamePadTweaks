@@ -41,3 +41,6 @@ else
 fi
 git push origin --tags --force
 git push origin "$(git branch --show-current)"
+
+# Copy the addons into the game too, so a push always leaves the game on the same code.
+"$(dirname "$0")/build.sh"
