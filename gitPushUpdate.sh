@@ -40,4 +40,4 @@ else
 	git remote add origin "$Remote"
 fi
 git push origin --tags --force
-git push origin master
+git push origin "$(git branch --show-current)"
