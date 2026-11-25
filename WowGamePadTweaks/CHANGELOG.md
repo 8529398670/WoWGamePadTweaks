@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.3 — 2026-11-25
+
+### Changed: Auto-run goes on one cell, not the whole button
+- **Auto-run** now sits on just the cell you put it on, like any other action. The button's other bars keep their own actions.
+- It works **out of combat only**: the game doesn't let addons change key bindings during a fight, so in combat that cell does nothing. The button's other bars work as usual.
+- A button that 1.6.1 or 1.6.2 filled with Auto-run gets its other actions back where the addon still had them. Any extra Auto-run cells left over can be cleared one by one.
+
 ## 1.6.2 — 2026-11-25
 
 ### Fixed: Auto-run no longer wipes a button's other actions

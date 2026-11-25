@@ -9,8 +9,8 @@
 --   game's own buttons for windows, never /run). The addon only ever deletes macros it made (the registry below),
 --   and only once no character uses them.
 --   face: Jump and Interact need press and release, which a macro can't send: routed cells only (Face.Routable).
---   bind: a game key binding (Auto-run), which no macro or click can run: routed cells only, and the whole button
---   (Face.lua binds its key to the command on every bar: the game picks a key's binding before the crossbar bar).
+--   bind: a game key binding (Auto-run), which no macro or click can run: routed cells only (Face.lua binds the key to
+--   the command while that cell's bar is up, out of combat only: bindings can't change in combat).
 --   hold: the same for our own hold buttons (Look behind, Peek map, TweaksActions.lua): the router clicks the button
 --   down on the press and up on the release; a touch button or ring slot taps it once (a toggle, its RightButton).
 -- On a routed cell (Face.lua) an entry sits in a shadow slot on the hidden keyboard bars 6-8 (Actions.Shadow) and
@@ -61,7 +61,7 @@ buyStack:SetScript("OnClick", function() ns.Tweaks.BuyStack() end)
 -- (action buttons act on down or up per the ActionButtonUseKeyDown CVar, so both clicks are sent; one acts).
 local GAME = {
 	{ "Movement", "jump", "Jump", "Ability_Rogue_Sprint", face = "jump" },
-	{ "Movement", "autorun", "Auto-run (whole button)", "INV_Boots_01", bind = "TOGGLEAUTORUN" },
+	{ "Movement", "autorun", "Auto-run", "INV_Boots_01", bind = "TOGGLEAUTORUN" },
 	{ "Movement", "sit", "Sit", "Spell_Nature_Sleep", text = "/sit", short = "Sit" },
 	{ "Movement", "stand", "Stand", "Ability_Warrior_Charge", text = "/stand", short = "Stand" },
 	{ "Movement", "lookbehind", "Look behind (hold)", "Ability_Hunter_EagleEye", hold = "WowGamePadTweaksLookBehind" },
@@ -1426,7 +1426,7 @@ function Actions.HoldButton(key)
 	return spec and spec.hold and _G[spec.hold] and spec.hold or nil
 end
 
-local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", bind = "Game key binding: takes the whole button, on every bar; the actions it covers come back when you take it off", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
+local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", bind = "Game key binding: works out of combat only (the game doesn't let addons change key bindings in a fight)", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
 
 function Actions.Describe(entry)
 	if entry.kind == "game" then return "Game command: " .. entry.payload.text end
