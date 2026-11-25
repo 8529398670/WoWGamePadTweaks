@@ -8,7 +8,7 @@
 ## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon
 ## Category: User Interface
 ## X-License: MIT
-## X-Website: https://racha.github.io/forever-controller-tweaks/
+## X-Website: https://github.com/8529398670/WoWGamePadTweaks
 
 Rings.lua
 View.lua

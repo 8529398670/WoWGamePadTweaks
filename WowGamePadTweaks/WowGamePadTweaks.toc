@@ -7,9 +7,7 @@
 ## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon
 ## Category: User Interface
 ## X-License: MIT
-## X-Website: https://racha.github.io/forever-controller-tweaks/
-## X-Curse-Project-ID: 1800450
-## X-Wago-ID: EGPamkN1
+## X-Website: https://github.com/8529398670/WoWGamePadTweaks
 ## AddonCompartmentFunc: WowGamePadTweaks_OnCompartmentClick
 ## AddonCompartmentFuncOnEnter: WowGamePadTweaks_OnCompartmentEnter
 ## AddonCompartmentFuncOnLeave: WowGamePadTweaks_OnCompartmentLeave
