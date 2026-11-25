@@ -19,6 +19,7 @@
 --                       OutStart) until the release, a fight starting, the world unloading or a window taking the pad
 --                       (a lost release). A tap from a touch button or ring is one step.
 --   Camera zoom (Tweaks) where the camera sits, in yards up to the game's limit: moved now, and once at login.
+--   Steer auto-run (Tweaks) GamePadTurnWithCamera 2 while on: the character always turns with the camera.
 local _, ns = ...
 local Tweaks = ns.Tweaks
 local Gear = Tweaks.Gear
@@ -264,3 +265,36 @@ ns.On("PLAYER_ENTERING_WORLD", function()
 	C_Timer.After(1, zoomAtLogin)
 end)
 ns.On("PLAYER_REGEN_ENABLED", zoomAtLogin)
+
+---------------------------------------------------------------------------------------------------------------------
+-- Steer auto-run with camera (Tweaks): GamePadTurnWithCamera 2 (always) instead of the game's 1 (in combat only), so
+-- the character turns with the right stick and auto-run follows it out of combat too. A left-stick push still ends
+-- auto-run: that is the game's, no addon can change it. While the tweak and the Gamepad UI are on the CVar is 2; the
+-- value it had before is kept in WowGamePadTweaksDB.steerCameraWas and put back when either goes off, and at logout
+-- (so the game's saved value stays the player's own), then set again at the next login. Never written in combat: a
+-- change waits for the fight to end.
+local STEER_CVAR, STEER_ON = "GamePadTurnWithCamera", "2"
+
+local function writeSteer(value)
+	if GetCVar(STEER_CVAR) == value then return true end
+	local ok, done = pcall(SetCVar, STEER_CVAR, value)
+	return ok and done ~= false
+end
+
+function Tweaks.Steer(leaving)
+	if not ns.db or InCombatLockdown() then return end
+	local now = call(GetCVar, STEER_CVAR)
+	if type(now) ~= "string" then return end
+	if not leaving and Tweaks.Is("steerAutoRun") then
+		if ns.db.steerCameraWas == nil then ns.db.steerCameraWas = now end
+		writeSteer(STEER_ON)
+	elseif type(ns.db.steerCameraWas) == "string" then
+		if writeSteer(ns.db.steerCameraWas) then ns.db.steerCameraWas = nil end
+	else
+		ns.db.steerCameraWas = nil
+	end
+end
+ns.On("FCT_ACTIVE_CHANGED", function() Tweaks.Steer() end)
+ns.On("PLAYER_ENTERING_WORLD", function() Tweaks.Steer() end)
+ns.On("PLAYER_REGEN_ENABLED", function() Tweaks.Steer() end)
+ns.On("PLAYER_LOGOUT", function() Tweaks.Steer(true) end)

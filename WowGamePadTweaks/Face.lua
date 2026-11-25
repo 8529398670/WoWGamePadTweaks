@@ -914,10 +914,18 @@ bindListener:EnableGamePadButton(true)
 bindListener:SetPropagateKeyboardInput(true)
 local bound = {}
 
+-- Pad buttons held now, by key name, from the listener's own events (the mapped state can lag the event).
+local heldKeys = {}
+
 local function currentLayer(cell, mods)
-	local state = GetGamePadState()
-	local held = state and state.buttons
-	local lm, rm = held and held[mods.leftmod or 0], held and held[mods.rightmod or 0]
+	local ok, state = pcall(C_GamePad.GetDeviceMappedState)
+	local buttons = ok and state and state.buttons
+	local function down(role)
+		local key = Layout.RoleKey(role)
+		local index = mods[role]
+		return key and heldKeys[key] or buttons and index and buttons[index] or false
+	end
+	local lm, rm = down("leftmod"), down("rightmod")
 	if lm and rm then return "bottom" end
 	if lm then return "left" end
 	if rm then return "right" end
@@ -950,8 +958,25 @@ local function updateBindCells()
 	bindListener:SetShown(next(bindCells) ~= nil)
 end
 
-bindListener:SetScript("OnGamePadButtonDown", function() updateBindCells() end)
-bindListener:SetScript("OnGamePadButtonUp", function() updateBindCells() end)
+-- /fct autorun: what the bind cells want and hold now.
+function ns.commands.autorun()
+	local mods = modifierIndexes()
+	ns.log(("autorun: %d cells, state %s, enabled %s, padFree %s, combat %s, shown %s, mods %s/%s"):format(#bindCells, tostring(header:GetAttribute("state-face")), tostring(header:GetAttribute("ps-enabled")), tostring(ns.padFree()), tostring(InCombatLockdown()), tostring(bindListener:IsShown()), tostring(mods.leftmod), tostring(mods.rightmod)))
+	for _, cell in ipairs(bindCells) do
+		local layers = {}
+		for layer, command in pairs(cell.layers) do layers[#layers + 1] = layer .. "=" .. command end
+		ns.log(("  %s: %s, now %s, bound %s, effective %s"):format(cell.key, table.concat(layers, " "), currentLayer(cell, mods), tostring(bound[cell.key]), tostring(GetBindingAction(cell.key, true))))
+	end
+end
+
+bindListener:SetScript("OnGamePadButtonDown", function(_, key)
+	heldKeys[key] = true
+	updateBindCells()
+end)
+bindListener:SetScript("OnGamePadButtonUp", function(_, key)
+	heldKeys[key] = nil
+	updateBindCells()
+end)
 bindListener:Hide()
 
 -- Back and Inspect used to be PS: game macros (Actions.LEGACY_FACE). Once per character, with the Gamepad UI on and

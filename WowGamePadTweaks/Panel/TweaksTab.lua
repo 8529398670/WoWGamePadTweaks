@@ -65,6 +65,7 @@ local T = {
 		upgradeArrows = { "Upgrade arrows", "A green arrow on gear you can wear with a higher item level than what you wear there." },
 		wearRewards = { "Wear quest rewards", "After a quest, an upgrade reward gets a card: hold the top face button to wear it." },
 		cameraZoom = { "Camera zoom", "Where the camera sits. Moving it zooms now; the camera goes back here when you log in." },
+		steerAutoRun = { "Steer auto-run with camera", "Your character always turns with the camera, so the right stick steers auto-run. The left stick still stops it: the game does that." },
 	},
 }
 S.T = T
@@ -79,7 +80,7 @@ for _, group in ipairs(ns.Tweaks.RUMBLE_GROUPS) do RUMBLE_ROWS[#RUMBLE_ROWS + 1]
 local COLUMNS = {
 	{ side = "right", sections = { { T.BAGS, { "sortBags", "sortKey", "sellJunk", "repair", "repairGuild", "buyStack" } }, { T.NPCS, { "skipGossip", "learnAll", "openMail" } } } },
 	{ side = "right", sections = { { T.RUMBLE, RUMBLE_ROWS } } },
-	{ side = "left", sections = { { T.CONTROLLER, { "battery", "batteryIcon", "rareAlert", "lightBar", "lightColor", "combatFlash" } }, { T.CAMERA, { "cameraZoom" } } } },
+	{ side = "left", sections = { { T.CONTROLLER, { "battery", "batteryIcon", "rareAlert", "lightBar", "lightColor", "combatFlash" } }, { T.CAMERA, { "cameraZoom", "steerAutoRun" } } } },
 	{ side = "left", sections = { { T.GEAR, { "fastLoot", "passUnusable", "upgradeArrows", "wearRewards" } }, { T.SOCIAL, { "acceptInvites", "declineDuels", "acceptRes", "whisperAlert" } } } },
 }
 -- A sub-row: its label is indented. A row in IDLE greys while the row above doesn't use it.

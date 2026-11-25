@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.4 — 2026-11-25
+
+### New: Steer auto-run with the camera
+- **Steer auto-run with camera** in the Tweaks tab, under Camera. Turn it on and your character always turns with the camera, so the right stick steers auto-run.
+- The left stick still stops auto-run. The game does that, and no addon can change it.
+- It sets the game's `GamePadTurnWithCamera` option to "always" (the game's default turns you with the camera only in combat). Turn the tweak off, or the Gamepad UI, and your old value comes back.
+
+### Fixed: Auto-run on a shoulder bar
+- **Auto-run** on an L1, R1 or L1+R1 bar now runs when you hold the shoulder and press the button. The addon read the held shoulder too late.
+
 ## 1.6.3 — 2026-11-25
 
 ### Changed: Auto-run goes on one cell, not the whole button

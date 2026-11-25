@@ -3,7 +3,7 @@
 -- Saved in ns.db.tweaks (one boolean per key, repaired on load). Like the rest of the addon they act only while the
 -- Gamepad UI is on.
 -- Taint: no StaticPopup, ShowUIPanel/HideUIPanel, FrameControlsManager, SmartNavigation, InputBindingManager or menu
--- call, no field written on a Blizzard frame, no CVar. The window buttons (Sort, Stack, Learn all, Open all) are our
+-- call, no field written on a Blizzard frame, no CVar but GamePadTurnWithCamera (Steer auto-run, TweaksActions.lua). The window buttons (Sort, Stack, Learn all, Open all) are our
 -- own frames parented to UIParent and only anchored to the Blizzard window; a poll reads that window's visibility.
 -- Popups Blizzard shows for an invite, duel, resurrect or summon are left alone: duel and resurrect ones hide
 -- themselves on DUEL_FINISHED / PLAYER_ALIVE, a summon's on CANCEL_SUMMON, an invite's on PARTY_INVITE_CANCEL.
@@ -31,7 +31,7 @@ Tweaks.KEYS = {
 	"acceptInvites", "declineDuels", "acceptRes",
 	"combatFlash", "rumble", "battery", "batteryIcon", "rareAlert",
 	"fastLoot", "passUnusable", "upgradeArrows", "wearRewards",
-	"whisperAlert",
+	"whisperAlert", "steerAutoRun",
 }
 -- cameraZoom: yards, nil until the player moves it; its slider stops at the game's own limit (Tweaks.CameraMax).
 Tweaks.NUMBERS = { rumbleStrength = { 0.1, 1, 0.1, 0.6 }, cameraZoom = { 0, 100, 1, nil } }
@@ -1382,6 +1382,7 @@ function Tweaks.Set(key, value)
 	if not ns.db then return end
 	if Tweaks.CHOICES[key] or Tweaks.NUMBERS[key] then ns.db.tweaks[key] = Tweaks.Repair({ [key] = value })[key] else ns.db.tweaks[key] = not not value end
 	if key == "cameraZoom" and Tweaks.ZoomTo then Tweaks.ZoomTo(ns.db.tweaks.cameraZoom) end
+	if key == "steerAutoRun" and Tweaks.Steer then Tweaks.Steer() end
 	Tweaks.Refresh()
 	Tweaks.Light()
 end
