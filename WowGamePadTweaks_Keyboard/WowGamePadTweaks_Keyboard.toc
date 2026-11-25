@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Wow GamePad Tweaks: Keyboard
 ## Notes: An on-screen keyboard for chat and text boxes, with word suggestions. Needs Wow GamePad Tweaks.
-## Author: HouseLegend
+## Author: 8529398670
 ## Version: v1.5.4
 ## Dependencies: WowGamePadTweaks
 ## Group: WowGamePadTweaks
