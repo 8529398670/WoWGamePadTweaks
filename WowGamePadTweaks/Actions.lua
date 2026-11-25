@@ -1426,7 +1426,7 @@ function Actions.HoldButton(key)
 	return spec and spec.hold and _G[spec.hold] and spec.hold or nil
 end
 
-local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", bind = "Game key binding: takes the whole button, on every bar", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
+local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", bind = "Game key binding: takes the whole button, on every bar; the actions it covers come back when you take it off", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
 
 function Actions.Describe(entry)
 	if entry.kind == "game" then return "Game command: " .. entry.payload.text end

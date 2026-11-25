@@ -2,7 +2,7 @@
 ## Title: Wow GamePad Tweaks
 ## Notes: Remap bumpers and triggers and put any action on any controller button. The Touch, Keyboard and Rings modules add the rest. Type /fct.
 ## Author: 8529398670
-## Version: v1.6.1
+## Version: v1.6.2
 ## SavedVariables: WowGamePadTweaksDB
 ## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon
 ## Category: User Interface

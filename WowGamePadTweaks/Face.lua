@@ -528,33 +528,45 @@ local function clearUnder(code, layer, page)
 	return true
 end
 
--- A bind entry on every layer of code (new.kind == "bind"), or one layer set to new after the whole button's bind entry
--- is dropped (the other layers go empty). Each layer gives its shadow slot back; the slots underneath are emptied on
--- the edited layer of page as usual, and only of the addon's own FCT: macros on the rest. Out of combat (the caller).
+-- A bind entry on every layer of code (new.kind == "bind"), or the whole button's bind entry dropped. Putting it on
+-- keeps each layer's routed entry in its under (a bind entry set again keeps the under it has) and gives that layer's
+-- shadow slot back; the crossbar slots underneath stay as they are. Dropping it sets layer to new (nil: that layer goes
+-- empty, so its crossbar slot shows, Picker's assign relies on it) and gives every other layer its under back, its
+-- shadow slot placed again (a failure there is left to the next apply). Out of combat (the caller).
 local function setWholeButton(list, code, row, layer, new, page)
-	local Actions, whole = ns.Actions, new and new.kind == "bind"
-	local slotKind = new and Actions.SLOT_KINDS[new.kind]
-	if ns.Active() then
+	local Actions = ns.Actions
+	if new and new.kind == "bind" then
 		for _, cellLayer in ipairs(CELL_LAYERS) do
-			if not (slotKind and cellLayer == layer) then
+			local old, under = row[cellLayer], nil
+			if old and old.kind == "bind" then
+				under = old.under
+			elseif old then
+				under = {}
+				for key, value in pairs(old) do under[key] = value end
+			end
+			if ns.Active() then
 				local done, err = pcall(Actions.ReleaseShadow, code, cellLayer)
 				if not done then return nil, "GamePad Tweaks couldn't free the action slot: " .. tostring(err) end
 			end
+			-- Each layer its own table: Healer mode and the like copy and write one cell.
+			row[cellLayer] = { id = new.id, name = new.name, icon = new.icon, kind = new.kind, under = under }
 		end
-		if slotKind then
+	else
+		if new and ns.Active() and Actions.SLOT_KINDS[new.kind] then
 			local done, ok, err = pcall(Actions.Shadow, code, layer, new)
 			if not done then return nil, "GamePad Tweaks couldn't place the action: " .. tostring(ok) end
 			if not ok then return nil, err end
 		end
-	end
-	for _, cellLayer in ipairs(CELL_LAYERS) do
-		local here = whole or cellLayer == layer
-		if new and here then
-			local ok, err = clearUnder(code, cellLayer, cellLayer == layer and page or nil)
+		if new then
+			local ok, err = clearUnder(code, layer, page)
 			if not ok then return nil, err end
 		end
-		-- Each layer its own table: Healer mode and the like copy and write one cell.
-		row[cellLayer] = here and new and { id = new.id, name = new.name, icon = new.icon, kind = new.kind } or nil
+		for _, cellLayer in ipairs(CELL_LAYERS) do
+			local old = row[cellLayer]
+			local back = cellLayer == layer and new or old and old.under or nil
+			row[cellLayer] = back
+			if back and cellLayer ~= layer and ns.Active() and Actions.SLOT_KINDS[back.kind] then pcall(Actions.Shadow, code, cellLayer, back) end
+		end
 	end
 	list[code] = next(row) and row or nil
 	ns.Fire("FCT_LAYOUT_CHANGED", "layout")
@@ -578,7 +590,7 @@ function Face.SetCellEntry(code, layer, entry, page)
 
 	local row = list[code] or {}
 	local new = entry and { id = entry.id, name = entry.name, icon = entry.icon, kind = ns.Actions.KindOf(entry) }
-	-- A bind entry takes the whole button, and leaves it whole: set or cleared on one cell, it is on every layer.
+	-- A bind entry takes the whole button; set or cleared on one cell, it comes off every layer (setWholeButton).
 	if new and new.kind == "bind" or bindOf(row) then return setWholeButton(list, code, row, layer, new, page) end
 	-- A slot kind gets its shadow slot now (a full range is refused here); anything else gives the cell's slot back.
 	-- With the Gamepad UI off, nothing is written; the next apply while it is on places or releases the slot.

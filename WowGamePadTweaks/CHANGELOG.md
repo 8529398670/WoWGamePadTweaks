@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.2 — 2026-11-25
+
+### Fixed: Auto-run no longer wipes a button's other actions
+- Putting **Auto-run** on a button replaced the actions on all four of its bars, and taking it off left the other bars empty. Now the button remembers them: take Auto-run off (put another action on one of its cells, or clear one) and the other bars get their actions back.
+- The cell you change gets the new action, or goes empty when you clear it. Spells and items in the crossbar slots under Auto-run aren't touched any more.
+- Auto-run itself still takes the whole button while it's on: the game decides a key's binding before it knows which bar is up.
+
 ## 1.6.1 — 2026-11-25
 
 ### New: Auto-run in the action picker
