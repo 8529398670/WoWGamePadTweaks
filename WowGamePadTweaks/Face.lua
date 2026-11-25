@@ -16,6 +16,9 @@
 -- paddle has no role, so it still outputs PADPADDLEn. A shoulder or trigger set to None is the same, on the paddle
 -- key the remap gives it (Layout.ActionKey). The stick presses (L3, R3) are the same, without roles: bound
 -- only while a cell holds an entry, so an unused one keeps its native Auto-run or Ping.
+-- A bind entry (Auto-run) is a game binding command, which no secure button can run: its button's key is bound to the
+-- command itself instead of the router, on every bar (the game picks a key's binding before any bar is known), so it
+-- fills all four cells of that button.
 -- The header owns the bindings and drops them in vehicles, override/possess bars and pet battles, in combat too.
 local _, ns = ...
 local Layout = ns.Layout
@@ -448,6 +451,16 @@ local function cells(create)
 	return cellCache or nil
 end
 
+-- The binding command of a row whose cells hold a bind entry (they all do, SetCellEntry), or nil.
+local function bindOf(row)
+	for _, layer in ipairs(CELL_LAYERS) do
+		local entry = row and row[layer]
+		local key = entry and tostring(entry.id):match("^bind:(%a+)$")
+		local command = key and ns.Actions and ns.Actions.BindCommand(key)
+		if command then return command, entry end
+	end
+end
+
 local function entryText(entry)
 	return entry and (ns.Actions and ns.Actions.TextFor(entry.id) or entry.text)
 end
@@ -515,6 +528,39 @@ local function clearUnder(code, layer, page)
 	return true
 end
 
+-- A bind entry on every layer of code (new.kind == "bind"), or one layer set to new after the whole button's bind entry
+-- is dropped (the other layers go empty). Each layer gives its shadow slot back; the slots underneath are emptied on
+-- the edited layer of page as usual, and only of the addon's own FCT: macros on the rest. Out of combat (the caller).
+local function setWholeButton(list, code, row, layer, new, page)
+	local Actions, whole = ns.Actions, new and new.kind == "bind"
+	local slotKind = new and Actions.SLOT_KINDS[new.kind]
+	if ns.Active() then
+		for _, cellLayer in ipairs(CELL_LAYERS) do
+			if not (slotKind and cellLayer == layer) then
+				local done, err = pcall(Actions.ReleaseShadow, code, cellLayer)
+				if not done then return nil, "GamePad Tweaks couldn't free the action slot: " .. tostring(err) end
+			end
+		end
+		if slotKind then
+			local done, ok, err = pcall(Actions.Shadow, code, layer, new)
+			if not done then return nil, "GamePad Tweaks couldn't place the action: " .. tostring(ok) end
+			if not ok then return nil, err end
+		end
+	end
+	for _, cellLayer in ipairs(CELL_LAYERS) do
+		local here = whole or cellLayer == layer
+		if new and here then
+			local ok, err = clearUnder(code, cellLayer, cellLayer == layer and page or nil)
+			if not ok then return nil, err end
+		end
+		-- Each layer its own table: Healer mode and the like copy and write one cell.
+		row[cellLayer] = here and new and { id = new.id, name = new.name, icon = new.icon, kind = new.kind } or nil
+	end
+	list[code] = next(row) and row or nil
+	ns.Fire("FCT_LAYOUT_CHANGED", "layout")
+	return true
+end
+
 -- entry = { id, name, icon[, kind] } (a passed text is ignored: it is built from the id) or nil to give the cell
 -- back (a face button's base layer goes back to its face action). page (1-3): the crossbar page shown while editing.
 -- Fires FCT_LAYOUT_CHANGED("layout").
@@ -532,6 +578,8 @@ function Face.SetCellEntry(code, layer, entry, page)
 
 	local row = list[code] or {}
 	local new = entry and { id = entry.id, name = entry.name, icon = entry.icon, kind = ns.Actions.KindOf(entry) }
+	-- A bind entry takes the whole button, and leaves it whole: set or cleared on one cell, it is on every layer.
+	if new and new.kind == "bind" or bindOf(row) then return setWholeButton(list, code, row, layer, new, page) end
 	-- A slot kind gets its shadow slot now (a full range is refused here); anything else gives the cell's slot back.
 	-- With the Gamepad UI off, nothing is written; the next apply while it is on places or releases the slot.
 	local Actions = ns.Actions
@@ -621,8 +669,9 @@ local APPLY_SNIPPET = ([[
 		return
 	end
 	for i = 1, %d do
-		local key = self:GetAttribute("ps-key" .. i)
-		if key then self:SetBindingClick(false, key, self:GetAttribute("ps-router" .. i), "LeftButton") end
+		local key, bind = self:GetAttribute("ps-key" .. i), self:GetAttribute("ps-bind" .. i)
+		if key and bind then self:SetBinding(false, key, bind)
+		elseif key then self:SetBindingClick(false, key, self:GetAttribute("ps-router" .. i), "LeftButton") end
 	end
 ]]):format(#CODES, #CODES)
 -- A state change drops a press in flight, so a later release can't go to the button it was aimed at.
@@ -978,8 +1027,11 @@ local function applyNow(ignorePanel)
 		local action, label, routes = pos and face[pos], pos or code, {}
 		-- A paddle with a role keeps its cells, unrouted and without shadow slots, until it is freed again.
 		local carried = not PADDLES[code] or Face.PaddleFree(code)
+		-- A bind entry: the key runs the game's binding, so no layer routes (and no catcher: a mouse can't run it).
+		local bind, bindEntry = nil, nil
+		if carried then bind, bindEntry = bindOf(row) end
 		for _, cellLayer in ipairs(CELL_LAYERS) do
-			local entry = carried and row[cellLayer] or nil
+			local entry = carried and not bind and row[cellLayer] or nil
 			local how, value
 			if entry then how, value = resolve(entry) end
 			-- A slot kind fires its shadow slot; placed now unless combat starts (else it stays macro text).
@@ -995,8 +1047,8 @@ local function applyNow(ignorePanel)
 			if how then routes[cellLayer] = { how, value, entry.name } end
 			if entry and not how then parts[#parts + 1] = string.format("%s entry %s unavailable", where, tostring(entry.id)) end
 		end
-		local moved = enabled and (next(routes) or (pos and action ~= Layout.NATIVE_FACE[pos]))
-		local slot = moved and aim(router, actionBars, code, action, routes, mods, unresolved)
+		local moved = enabled and (bind or next(routes) or (pos and action ~= Layout.NATIVE_FACE[pos]))
+		local slot = moved and not bind and aim(router, actionBars, code, action, routes, mods, unresolved) or nil
 		for cellLayer, layer in pairs(CELL_LAYER) do
 			local route = routes[cellLayer]
 			local how = moved and route and route[1]
@@ -1005,18 +1057,19 @@ local function applyNow(ignorePanel)
 			router:SetAttribute("ps-ring-" .. layer, how == "ring" and route[2] or nil)
 			shadowOf[code .. "/" .. cellLayer] = route and route[1] == "action" and route[2] or nil
 			-- A moved face action on the base layer is a routed cell too.
-			local shown = how and route or slot and cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and { "click", action }
+			local shown = how and route or slot and cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and { "click", action } or nil
 			local catcher = shown and slot and catcherFor(actionBars, code, cellLayer, slot) or catchers[code .. "/" .. cellLayer]
 			if catcher then aimCatcher(catcher, shown or nil, actionBars) end
 		end
 		header:SetAttribute("ps-key" .. i, moved and key or nil)
+		header:SetAttribute("ps-bind" .. i, moved and bind or nil)
 		-- An open ring binds A and B but the key that opened it.
 		router:SetAttribute("ps-key", moved and key or nil)
 		if moved then
 			local cellParts = {}
 			for _, cellLayer in ipairs(CELL_LAYERS) do
 				local route = routes[cellLayer]
-				local what = route and route[3] or cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and action
+				local what = route and route[3] or cellLayer == "T" and (bind and bindEntry.name or pos and action ~= Layout.NATIVE_FACE[pos] and action)
 				if what then cellParts[#cellParts + 1] = (cellLayer == "T" and key or key .. "/" .. cellLayer) .. "=" .. what end
 			end
 			for _, part in ipairs(cellParts) do short[#short + 1] = part end

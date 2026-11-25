@@ -410,6 +410,7 @@ function Rings.SetSlot(id, i, entry)
 	if entry and entry.disabled then return nil, entry.note end
 	local kind = entry and ns.Actions.KindOf(entry)
 	if kind == "ring" then return nil, "A ring can't open another ring." end
+	if kind == "bind" then return nil, tostring(entry.name) .. " is a game key binding: it can only take a whole controller button." end
 
 	ring.slots[i] = entry and { id = entry.id, name = entry.name, icon = entry.icon, kind = kind } or nil
 	return changed()

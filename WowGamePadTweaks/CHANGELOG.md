@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.1 — 2026-11-25
+
+### New: Auto-run in the action picker
+- **Auto-run (whole button)** is in the picker under Movement. Put it on any controller button and that button toggles auto-run, like L3 does out of the box.
+- It takes the whole button: all four bars of that button show Auto-run, and L1, R1 or both held still auto-run. The game decides a key's binding before it knows which bar is up, so it can't be on one bar only.
+- Putting another action on one of its cells, or clearing one, takes Auto-run off the whole button.
+- Not on touch buttons or ring slots: the game only runs auto-run from a key binding.
+
 ## 1.6.0 — 2026-11-25
 
 ### New: shoulders and triggers as action buttons

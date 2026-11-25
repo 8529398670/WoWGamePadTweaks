@@ -2,7 +2,7 @@
 ## Title: Wow GamePad Tweaks: Rings
 ## Notes: Action rings: hold a button, aim with the stick, release to use. Needs Wow GamePad Tweaks.
 ## Author: 8529398670
-## Version: v1.6.0
+## Version: v1.6.1
 ## Dependencies: WowGamePadTweaks
 ## Group: WowGamePadTweaks
 ## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon

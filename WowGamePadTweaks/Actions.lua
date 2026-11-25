@@ -9,6 +9,8 @@
 --   game's own buttons for windows, never /run). The addon only ever deletes macros it made (the registry below),
 --   and only once no character uses them.
 --   face: Jump and Interact need press and release, which a macro can't send: routed cells only (Face.Routable).
+--   bind: a game key binding (Auto-run), which no macro or click can run: routed cells only, and the whole button
+--   (Face.lua binds its key to the command on every bar: the game picks a key's binding before the crossbar bar).
 --   hold: the same for our own hold buttons (Look behind, Peek map, TweaksActions.lua): the router clicks the button
 --   down on the press and up on the release; a touch button or ring slot taps it once (a toggle, its RightButton).
 -- On a routed cell (Face.lua) an entry sits in a shadow slot on the hidden keyboard bars 6-8 (Actions.Shadow) and
@@ -59,6 +61,7 @@ buyStack:SetScript("OnClick", function() ns.Tweaks.BuyStack() end)
 -- (action buttons act on down or up per the ActionButtonUseKeyDown CVar, so both clicks are sent; one acts).
 local GAME = {
 	{ "Movement", "jump", "Jump", "Ability_Rogue_Sprint", face = "jump" },
+	{ "Movement", "autorun", "Auto-run (whole button)", "INV_Boots_01", bind = "TOGGLEAUTORUN" },
 	{ "Movement", "sit", "Sit", "Spell_Nature_Sleep", text = "/sit", short = "Sit" },
 	{ "Movement", "stand", "Stand", "Ability_Warrior_Charge", text = "/stand", short = "Stand" },
 	{ "Movement", "lookbehind", "Look behind (hold)", "Ability_Hunter_EagleEye", hold = "WowGamePadTweaksLookBehind" },
@@ -168,6 +171,8 @@ local function gameEntries(add)
 		local category, key, name, icon = spec[1], spec[2], spec[3], ICONS .. spec[4]
 		if spec.face then
 			add({ id = "face:" .. spec.face, category = category, name = name, icon = icon, kind = "face", payload = spec.face })
+		elseif spec.bind then
+			add({ id = "bind:" .. key, category = category, name = name, icon = icon, kind = "bind", payload = spec.bind })
 		elseif spec.hold then
 			if _G[spec.hold] then add({ id = "hold:" .. key, category = category, name = name, icon = icon, kind = "hold", payload = spec.hold }) end
 		else
@@ -679,7 +684,7 @@ end
 
 local COMBAT = "GamePad Tweaks changes the crossbar out of combat only."
 local HOLDING = "Put down what the cursor is holding first."
-local ROUTED = "%s needs press and release, which a crossbar slot can't send: GamePad Tweaks routes it on this button instead."
+local ROUTED = "%s can't go in a crossbar slot: GamePad Tweaks routes it on this button instead."
 
 local NOT_EMPTY = "That action slot isn't free after all; GamePad Tweaks left it as it was."
 -- Shadow slots' synced list (below): a cleared slot leaves it.
@@ -689,7 +694,7 @@ local forget
 -- (expected); if PlaceAction hands back anything else, it goes back into the slot and nothing is deleted.
 local function place(slot, entry, guard, expected)
 	if InCombatLockdown() then return nil, COMBAT end
-	if entry.kind == "face" or entry.kind == "hold" then return nil, ROUTED:format(entry.name) end
+	if entry.kind == "face" or entry.kind == "hold" or entry.kind == "bind" then return nil, ROUTED:format(entry.name) end
 	if entry.disabled then return nil, entry.note end
 	if GetCursorInfo() then return nil, HOLDING end
 
@@ -1409,13 +1414,19 @@ function Actions.TextFor(id)
 	end
 end
 
+-- The game binding command a bind action's button runs ("autorun" -> TOGGLEAUTORUN), or nil.
+function Actions.BindCommand(key)
+	local spec = GAME_BY_KEY[key]
+	return spec and spec.bind
+end
+
 -- The global name of a hold action's own button ("lookbehind" -> WowGamePadTweaksLookBehind), or nil.
 function Actions.HoldButton(key)
 	local spec = GAME_BY_KEY[key]
 	return spec and spec.hold and _G[spec.hold] and spec.hold or nil
 end
 
-local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
+local DESCRIBE = { hold = "Hold action: held on a controller button, a toggle on a touch button or ring slot", spell = "Spell", pet = "Pet spell", item = "Item with a use effect", toy = "Toy", set = "Equipment set", mount = "Mount", macro = "Your macro", face = "Face action (press and hold)", bind = "Game key binding: takes the whole button, on every bar", ring = "Ring: hold the button, aim with the right stick, release to use (a touch button: tap)" }
 
 function Actions.Describe(entry)
 	if entry.kind == "game" then return "Game command: " .. entry.payload.text end
