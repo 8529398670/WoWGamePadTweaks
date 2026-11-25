@@ -2,7 +2,7 @@
 ## Title: Wow GamePad Tweaks: Touch
 ## Notes: Touch bars: buttons on the screen edges to tap on a touch screen (Steam Link). Needs Wow GamePad Tweaks.
 ## Author: 8529398670
-## Version: v1.5.4
+## Version: v1.6.0
 ## Dependencies: WowGamePadTweaks
 ## Group: WowGamePadTweaks
 ## IconTexture: Interface\AddOns\WowGamePadTweaks\Art\icon

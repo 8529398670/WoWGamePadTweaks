@@ -1,5 +1,6 @@
 -- Wow GamePad Tweaks face router: moves Interact, Inspect, Back and Jump between the face buttons, and runs any
--- catalog entry on any face or D-pad button, or on a back paddle without a role, per crossbar layer (a "cell").
+-- catalog entry on any face or D-pad button, or on a back paddle, shoulder or trigger without a role, per crossbar
+-- layer (a "cell").
 --
 -- Each routed key is bound (a non-priority override, so Blizzard's window binding sets still win) to a secure macro button. Its snippet reads the held pad buttons, picks the layer, and writes
 -- `/click <Blizzard button> LeftButton 1` on press and `/click <Blizzard button> LeftButton` on release, which keeps
@@ -12,7 +13,8 @@
 -- be placed it runs its secure macro text instead (ps-entry-<layer>). Routed cells apply on every crossbar page, and
 -- a click catcher over the cell's crossbar slot takes mouse clicks, hover and gamepad focus.
 -- A back paddle has no crossbar slot: only its cells route (a layer without one does nothing), and only while the
--- paddle has no role, so it still outputs PADPADDLEn. The stick presses (L3, R3) are the same, without roles: bound
+-- paddle has no role, so it still outputs PADPADDLEn. A shoulder or trigger set to None is the same, on the paddle
+-- key the remap gives it (Layout.ActionKey). The stick presses (L3, R3) are the same, without roles: bound
 -- only while a cell holds an entry, so an unused one keeps its native Auto-run or Ping.
 -- The header owns the bindings and drops them in vehicles, override/possess bars and pet battles, in combat too.
 local _, ns = ...
@@ -24,17 +26,20 @@ local ASSUMED_SLOT = { PADDLEFT = 1, PADDUP = 2, PADDRIGHT = 3, PADDDOWN = 4, PA
 -- Cells use the Bindings grid's ids: row codes (face positions first, in Layout.FACE_POSITIONS order, as the router
 -- index; the paddles and stick presses last, so Glyphs' ps-key1..8 stay the crossbar keys) and layers T/L/R/B (top,
 -- left, right, bottom bar).
-local CODES = { "FB", "FR", "FL", "FT", "DU", "DL", "DR", "DD", "P1", "P2", "P3", "P4", "L3", "R3" }
+local CODES = { "FB", "FR", "FL", "FT", "DU", "DL", "DR", "DD", "P1", "P2", "P3", "P4", "L3", "R3", "L1", "R1", "L2", "R2" }
 local CODE_KEY = {
 	FB = "PAD1", FR = "PAD2", FL = "PAD3", FT = "PAD4", DU = "PADDUP", DL = "PADDLEFT", DR = "PADDRIGHT", DD = "PADDDOWN",
 	P1 = "PADPADDLE1", P2 = "PADPADDLE2", P3 = "PADPADDLE3", P4 = "PADPADDLE4", L3 = "PADLSTICK", R3 = "PADRSTICK",
+	-- Never bound: a shoulder or trigger carries its cells on the key Layout.ActionKey names (keyOf).
+	L1 = "PADLSHOULDER", R1 = "PADRSHOULDER", L2 = "PADLTRIGGER", R2 = "PADRTRIGGER",
 }
 local CODE_POS = { FB = "bottom", FR = "right", FL = "left", FT = "top" }
 local POS_CODE = { bottom = "FB", right = "FR", left = "FL", top = "FT" }
-local ROUTER_NAME = { DU = "DpadUp", DL = "DpadLeft", DR = "DpadRight", DD = "DpadDown", P1 = "Paddle1", P2 = "Paddle2", P3 = "Paddle3", P4 = "Paddle4", L3 = "LeftStick", R3 = "RightStick" }
-local PADDLES = { P1 = true, P2 = true, P3 = true, P4 = true }
--- Buttons without a crossbar slot: the paddles and the stick presses. Paddle roles (PaddleFree) stay paddle-only.
-local NO_SLOT = { P1 = true, P2 = true, P3 = true, P4 = true, L3 = true, R3 = true }
+local ROUTER_NAME = { DU = "DpadUp", DL = "DpadLeft", DR = "DpadRight", DD = "DpadDown", P1 = "Paddle1", P2 = "Paddle2", P3 = "Paddle3", P4 = "Paddle4", L3 = "LeftStick", R3 = "RightStick", L1 = "LeftShoulder", R1 = "RightShoulder", L2 = "LeftTrigger", R2 = "RightTrigger" }
+-- The buttons that have a role or carry cells (PaddleFree): the paddles, shoulders and triggers.
+local PADDLES = { P1 = true, P2 = true, P3 = true, P4 = true, L1 = true, R1 = true, L2 = true, R2 = true }
+-- Buttons without a crossbar slot: those and the stick presses.
+local NO_SLOT = { P1 = true, P2 = true, P3 = true, P4 = true, L3 = true, R3 = true, L1 = true, R1 = true, L2 = true, R2 = true }
 -- A router's kind for a ring's Dynamic stick (Rings.lua): a face button and R3 aim with the left stick, the rest with
 -- the right one.
 local KIND = { L3 = "lstick", R3 = "rstick" }
@@ -456,10 +461,16 @@ function Face.Routable(code, layer, entry)
 	return not not (entry and not ns.Actions.SLOT_KINDS[ns.Actions.KindOf(entry)])
 end
 
--- True when a back paddle carries its cells: it has no role (so it still outputs PADPADDLEn) and this pad has it.
+-- True when a back paddle, shoulder or trigger carries its cells: this pad has it and it has no role, so it outputs a
+-- paddle key (Layout.ActionKey).
 function Face.PaddleFree(code)
-	local device = PADDLES[code] and ns.Device.Current()
-	return not not (device and device.raw and device.raw[code] and not Layout.Roles()[code])
+	return not not (PADDLES[code] and Layout.ActionKey(code))
+end
+
+-- The key a cell row's router binds: a free paddle, shoulder or trigger's paddle key, else its own key.
+local function keyOf(code)
+	if PADDLES[code] then return Layout.ActionKey(code) or CODE_KEY[code] end
+	return CODE_KEY[code]
 end
 
 -- The routed entry { id, name, icon, kind } on a cell, or nil. Callers must not modify it.
@@ -515,7 +526,7 @@ function Face.SetCellEntry(code, layer, entry, page)
 	-- An addon's Lua key binding: restricted code can't run a binding command, and the layer is known only at the
 	-- press, too late to bind the key to it.
 	if entry and entry.disabled then return nil, entry.note end
-	if entry and PADDLES[code] and not Face.PaddleFree(code) then return nil, "this paddle has a role; set its role to None to use it for actions" end
+	if entry and PADDLES[code] and not Face.PaddleFree(code) then return nil, "this button has a role; set its role to None to use it for actions" end
 	local list = cells(true)
 	if not list then return nil, "no controller found" end
 
@@ -963,7 +974,7 @@ local function applyNow(ignorePanel)
 		ns.MigrateChar("routedUnderDone", clearUnderRouted)
 	end
 	for i, code in ipairs(CODES) do
-		local router, key, pos, row = routers[i], CODE_KEY[code], CODE_POS[code], list[code] or {}
+		local router, key, pos, row = routers[i], keyOf(code), CODE_POS[code], list[code] or {}
 		local action, label, routes = pos and face[pos], pos or code, {}
 		-- A paddle with a role keeps its cells, unrouted and without shadow slots, until it is freed again.
 		local carried = not PADDLES[code] or Face.PaddleFree(code)

@@ -193,7 +193,7 @@ B.NativeStick = nativeStick
 
 local function cellTip(cell)
 	local paddle, stick = UI.MOD_CODES[cell.code], STICKS[cell.code]
-	local kind = cell.reserved and L.FACE_SLOT or paddle and L.PADDLE_SLOT or stick and L.STICK_SLOT or L.CROSSBAR_SLOT
+	local kind = cell.reserved and L.FACE_SLOT or paddle and (cell.code:sub(1, 1) == "P" and L.PADDLE_SLOT or L.BUTTON_SLOT) or stick and L.STICK_SLOT or L.CROSSBAR_SLOT
 	local choose = cell.slot and GetCursorInfo() and L.PLACE_HELD or L.CHOOSE_ACTION
 	local actions = { { "PAD1", choose }, { "PAD3", L.CLEAR_SLOT } }
 	if paddle then actions[3] = { "PAD4", L.PADDLE_ROLE } end
@@ -469,13 +469,22 @@ local function freePaddle(roles)
 	return spare
 end
 
--- "None" on a shoulder or trigger hands its role to a free paddle (Layout allows none on paddles only).
+-- "None" on a shoulder or trigger hands its role to a free paddle; without one the role is dropped (nobody holds it).
+-- Either way the button then carries actions.
 local function assign(phys, role)
 	if role ~= "none" or isPaddle(phys) then return report(Layout.SetRole(phys, role)) end
 
 	local roles = Layout.Roles()
-	local paddle = freePaddle(roles)
-	if paddle then report(Layout.SetRole(paddle, roles[phys])) end
+	local paddle = roles[phys] and freePaddle(roles)
+	if paddle then return report(Layout.SetRole(paddle, roles[phys])) end
+	report(Layout.SetRole(phys, "none"))
+end
+
+-- How many roles some button holds.
+local function heldCount(roles)
+	local count = 0
+	for _ in pairs(roles) do count = count + 1 end
+	return count
 end
 
 -- The roles, each with its colour and what it does; a note says what picking it moves.
@@ -491,8 +500,13 @@ local function roleEntries(phys)
 		if role == "none" and isPaddle(phys) then
 			entry.detail, entry.note = L.PADDLE_FOR_ACTIONS_TIP, L.PADDLE_FOR_ACTIONS
 		elseif role ~= mine and role == "none" and not isPaddle(phys) then
-			local paddle = freePaddle(roles)
-			entry.note, entry.disabled = paddle and L.ROLE_TO_PADDLE or L.ROLE_NEEDS_BUTTON, not paddle
+			local paddle, last = freePaddle(roles), heldCount(roles) <= 1
+			entry.detail = L.BUTTON_FOR_ACTIONS_TIP
+			if paddle then entry.note = L.ROLE_TO_PADDLE
+			elseif last then entry.note, entry.disabled = L.ROLE_NEEDS_BUTTON, true
+			else entry.note = string.format(L.ROLE_DROPS, UI.ROLE[mine].name) end
+		elseif role == "none" then
+			entry.detail = L.BUTTON_FOR_ACTIONS_TIP
 		elseif role ~= mine and holder then
 			entry.note = string.format(mine == "none" and L.ROLE_TAKES or L.ROLE_SWAPS, UI.Name(holder))
 		end
@@ -524,7 +538,7 @@ end
 
 -- A role on a paddle that holds actions asks first; its cells stay stored and come back with None.
 local function pickRole(phys, role)
-	if role == "none" or not (isPaddle(phys) and ns.Face.PaddleFree(phys) and hasActions(phys)) then return setRole(phys, role) end
+	if role == "none" or not (ns.Face.PaddleFree(phys) and hasActions(phys)) then return setRole(phys, role) end
 	UI.Dialog():Open(window, { text = string.format(L.PADDLE_ROLE_TEXT, UI.Name(phys), UI.ROLE[role].name), sub = L.PADDLE_ROLE_SUB, buttons = { L.CHANGE_ROLE, L.CANCEL }, on1 = function() setRole(phys, role) end })
 end
 
@@ -535,7 +549,7 @@ local function openRoles(row, anchor)
 	UI.ActionPicker.Open({ window = window, cell = anchor or row.plate, list = { title = string.format(L.ROLES_TITLE, UI.Name(row.code)), entries = entries, current = mine, onPick = function(entry) pickRole(row.code, entry.id) end } })
 end
 
--- A paddle without a role carries actions, so its row has cells (not in guided mode, which sets roles).
+-- A paddle, shoulder or trigger without a role carries actions, so its row has cells (not in guided mode, which sets roles).
 local function hasCells(code) return not UI.MOD_CODES[code] or not guided and ns.Face.PaddleFree(code) end
 
 -- D-pad and face rows, and free paddles, get the four layer cells; modifier rows a plate that opens the role list.

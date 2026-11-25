@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — 2026-11-25
+
+### New: shoulders and triggers as action buttons
+- A shoulder or trigger can now be set to **None** and run its own action on each bar, like a back paddle: for example Smite on R2 alone, and something else on L2 + R2.
+- In the Bindings window, pick the button's row, choose **None**, then put actions on its cells. Anything from the action picker works there.
+- The role it had goes away unless a free back paddle takes it: setting R2 to None on a pad without paddles means no right-trigger bar. The role list says what you lose before you pick.
+- Give the button a role again to make it a modifier again; its actions stay saved.
+- One button always keeps a role.
+- Update the addon on every computer you sync: an older version doesn't understand a layout with a role left out and resets that profile's layout.
+
 ## 1.5.4 — 2026-11-21
 
 ### Changed: profiles belong to the character, controllers don't matter

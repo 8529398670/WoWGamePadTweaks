@@ -64,6 +64,8 @@ local IS_NATIVE_KEY = {}
 for _, key in pairs(Layout.NATIVE_KEY) do IS_NATIVE_KEY[key] = true end
 
 local function isPaddle(phys) return phys:sub(1, 1) == "P" end
+local SHOULDERS = { "L1", "R1", "L2", "R2" }
+local PADDLE_KEYS = { "PADPADDLE1", "PADPADDLE2", "PADPADDLE3", "PADPADDLE4" }
 
 function Layout.Copy(value)
 	if type(value) ~= "table" then return value end
@@ -128,14 +130,14 @@ local function validSource(source)
 	return count == 1 and (isIndex(source.button) or type(source.axis) == "string")
 end
 
--- Empty, or every one of values used exactly once on a valid key.
-local function validAssignment(map, isKey, isValue, needed)
+-- Empty, or every one of values used exactly once on a valid key; partial: at most once each, so some may be unused.
+local function validAssignment(map, isKey, isValue, needed, partial)
 	local seen, count = {}, 0
 	for key, value in pairs(map) do
 		if not isKey(key) or not isValue[value] or seen[value] then return false end
 		seen[value], count = true, count + 1
 	end
-	return count == 0 or count == needed
+	return count == 0 or count == needed or partial and count < needed
 end
 
 local function validDetect(detect)
@@ -151,7 +153,8 @@ local function validDetect(detect)
 	return true
 end
 
-local function validRoles(roles) return validAssignment(roles, function(phys) return Layout.NATIVE_KEY[phys] ~= nil end, IS_ROLE, #Layout.ROLES) end
+-- A role may be held by nobody since 1.6.0: a shoulder or trigger set to None drops it to carry actions.
+local function validRoles(roles) return validAssignment(roles, function(phys) return Layout.NATIVE_KEY[phys] ~= nil end, IS_ROLE, #Layout.ROLES, true) end
 local function validFace(face) return validAssignment(face, function(pos) return IS_POSITION[pos] end, IS_ACTION, #Layout.FACE_ACTIONS) end
 
 function Layout.RepairDevice(entry, key)
@@ -212,7 +215,7 @@ function Layout.NativeRoles(swap)
 	return { L1 = swap and "hostile" or "friendly", R1 = swap and "friendly" or "hostile", L2 = "leftmod", R2 = "rightmod" }
 end
 
--- Stored roles are either empty (native) or a full assignment.
+-- Stored roles are either empty (native) or the full list of who holds what: a role nobody holds is left out.
 function Layout.Effective(roles, swap)
 	if roles and next(roles) then return Layout.Copy(roles) end
 	return Layout.NativeRoles(swap)
@@ -223,9 +226,10 @@ local function normalize(roles, swap)
 	return roles
 end
 
--- Gives role to phys and swaps: the button that held the role takes phys's old one, so every role keeps exactly one
--- source. "none" is allowed on a paddle only; its role goes back to the native holder, else the first free button.
--- Returns the new stored roles, or nil and a reason.
+-- Gives role to phys and swaps: the button that held the role takes phys's old one (a role nobody held leaves phys's
+-- old one unheld). "none" on a paddle sends its role back to the native holder, else the first free button; on a
+-- shoulder or trigger it drops the role, so nobody holds it and the button carries actions. One role always stays:
+-- no roles at all would read as the native layout. Returns the new stored roles, or nil and a reason.
 function Layout.AssignRole(roles, phys, role, swap)
 	if not Layout.NATIVE_KEY[phys] then return nil, "unknown button " .. tostring(phys) end
 
@@ -233,7 +237,11 @@ function Layout.AssignRole(roles, phys, role, swap)
 	if role == "none" then
 		local old = out[phys]
 		if not old then return normalize(out, swap) end
-		if not isPaddle(phys) then return nil, "every role needs a button; give " .. old .. " to another button instead" end
+		if not isPaddle(phys) then
+			out[phys] = nil
+			if not next(out) then return nil, "one button keeps a role; give " .. old .. " to another button instead" end
+			return normalize(out, swap)
+		end
 
 		local free
 		for _, other in ipairs({ "L1", "R1", "L2", "R2" }) do
@@ -251,18 +259,32 @@ function Layout.AssignRole(roles, phys, role, swap)
 	for other, held in pairs(out) do
 		if held == role then holder = other end
 	end
-	if holder ~= phys then out[holder], out[phys] = out[phys], role end
+	if not holder then out[phys] = role
+	elseif holder ~= phys then out[holder], out[phys] = out[phys], role end
 	return normalize(out, swap)
 end
 
 -- The native key each physical button outputs under these roles. A button without a raw source isn't remapped, so it
--- keeps its native key; a paddle without a role keeps PADPADDLEn; a shoulder without a role outputs nothing.
+-- keeps its native key; a paddle without a role keeps PADPADDLEn. A shoulder or trigger without a role takes a paddle
+-- key no free paddle of this pad sends (one whose paddle is missing or holds a role), so the face router can bind its
+-- actions there; with none left it outputs nothing.
 function Layout.Outputs(raw, roles, swap)
-	local eff, out = Layout.Effective(roles, swap), {}
+	local eff, out, taken = Layout.Effective(roles, swap), {}, {}
 	for _, phys in ipairs(Layout.PHYSICAL) do
 		local role = eff[phys]
 		local key = role and Layout.RoleKey(role, swap) or isPaddle(phys) and Layout.NATIVE_KEY[phys] or NONE
 		out[phys] = raw[phys] and key or Layout.NATIVE_KEY[phys]
+		if isPaddle(phys) and raw[phys] and not role then taken[key] = true end
+	end
+	for _, phys in ipairs(SHOULDERS) do
+		if raw[phys] and not eff[phys] then
+			for _, key in ipairs(PADDLE_KEYS) do
+				if not taken[key] then
+					out[phys], taken[key] = key, true
+					break
+				end
+			end
+		end
 	end
 	return out
 end
@@ -568,6 +590,18 @@ end
 function Layout.Roles()
 	local entry = current()
 	return Layout.Effective(entry and entry.roles, swapTargets())
+end
+
+-- The key a button without a role sends for its actions on this pad: a free paddle's own PADPADDLEn, or the paddle
+-- key a shoulder or trigger set to None takes (Outputs). nil while it has a role, this pad has no raw source for it,
+-- or no key is left.
+function Layout.ActionKey(phys)
+	local device = ns.Device and ns.Device.Current()
+	if not (device and device.raw and device.raw[phys]) then return end
+	local roles = Layout.Roles()
+	if roles[phys] then return end
+	local key = Layout.Outputs(device.raw, roles, swapTargets())[phys]
+	if key ~= NONE then return key end
 end
 
 function Layout.Face()
