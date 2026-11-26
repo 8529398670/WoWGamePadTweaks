@@ -47,7 +47,18 @@ local NO_SLOT = { P1 = true, P2 = true, P3 = true, P4 = true, L3 = true, R3 = tr
 -- the right one.
 local KIND = { L3 = "lstick", R3 = "rstick" }
 local CELL_LAYERS = { "T", "L", "R", "B" }
-local CELL_LAYER = { T = "top", L = "left", R = "right", B = "bottom" }
+-- F and H (friendly, hostile): targeting layers, used only with the Gamepad UI off (it has its own targeting bars
+-- then): holding the friendly or hostile button swaps the routed keys to them (the targeting buttons below).
+local TARGET_LAYERS_OFF = { "F", "H" }
+local ALL_LAYERS = { "T", "L", "R", "B", "F", "H" }
+local CELL_LAYER = { T = "top", L = "left", R = "right", B = "bottom", F = "friendly", H = "hostile" }
+-- What a targeting layer does until the player puts something else there (clearing it brings this back).
+local TARGET_DEFAULTS = {
+	F = { FB = "game:targetself", DU = "game:party1", DR = "game:party2", DD = "game:party3", DL = "game:party4", FR = "game:targetfocus", FL = "game:assist", FT = "game:focus" },
+	H = { FB = "game:targetenemy", FR = "game:cleartarget", FL = "game:assist", FT = "game:focus", DU = "game:targetfocus", DD = "game:marknext", DL = "game:startattack", DR = "game:petattack" },
+}
+-- A quick tap of the friendly or hostile button alone (Gamepad UI off).
+local TARGET_TAP = { friendly = "/targetfriend", hostile = "/targetenemy" }
 local CELL_BAR = { T = "topBar", L = "leftBar", R = "rightBar", B = "bottomBar" }
 local CORE_CTX = Enum.BindingContext and Enum.BindingContext.GamepadModeInGameCore or 9
 local BARS = { left = "leftBar", right = "rightBar", bottom = "bottomBar", friendly = "friendlyTargetingBar", hostile = "hostileTargetingBar", shortcuts = "shortcutsBar" }
@@ -79,7 +90,12 @@ local ROUTER_SNIPPET = [[
 			local lm, rm = held[self:GetAttribute("ps-ileftmod") or 0], held[self:GetAttribute("ps-irightmod") or 0]
 			if lm and rm then layer = "bottom"
 			elseif lm then layer = "left"
-			elseif rm then layer = "right" end
+			elseif rm then layer = "right"
+			-- Gamepad UI off only (else these are unset): a held targeting button, which then doesn't tap-target.
+			elseif held[self:GetAttribute("ps-ifriendly") or 0] then layer = "friendly"
+			elseif held[self:GetAttribute("ps-ihostile") or 0] then layer = "hostile" end
+			local tap = (layer == "friendly" or layer == "hostile") and self:GetFrameRef("tgt-" .. layer)
+			if tap then tap:SetAttribute("ps-used", true) end
 		end
 		if layer == "top" then
 			for _, kind in ipairs(TARGET_KINDS) do
@@ -505,7 +521,12 @@ end
 function Face.CellEntry(code, layer)
 	local list = cells()
 	local row = list and list[code]
-	return row and row[layer]
+	local entry = row and row[layer]
+	if entry or not TARGET_DEFAULTS[layer] then return entry end
+	-- A targeting layer's standard action (default = true: nothing is stored).
+	local id = TARGET_DEFAULTS[layer][code]
+	local found = id and ns.Actions and ns.Actions.Find(id)
+	return found and { id = found.id, name = found.name, icon = found.icon, kind = ns.Actions.KindOf(found), default = true } or nil
 end
 
 local function nativeSlot(key)
@@ -521,7 +542,7 @@ local BAR_INDEX = { T = 1, L = 2, R = 3, B = 4 }
 local function storageSlot(code, layer, page)
 	local util = GamepadActionBarBindingUtil
 	local storage = util and util.GetGamepadStorageSlotIndexFromPageAndPageUnitSlotID
-	if not storage or NO_SLOT[code] or (layer == "T" and CODE_POS[code]) then return end
+	if not storage or NO_SLOT[code] or not BAR_INDEX[layer] or (layer == "T" and CODE_POS[code]) then return end
 
 	local ok, slot = pcall(storage, page, (BAR_INDEX[layer] - 1) * ns.Actions.PER_BAR + nativeSlot(CODE_KEY[code]))
 	return ok and slot or nil
@@ -664,6 +685,11 @@ local APPLY_SNIPPET = ([[
 			if key then self:SetBindingClick(false, key, router, "LeftButton") end
 		end
 	end
+	-- Gamepad UI off: the friendly and hostile buttons go to the targeting buttons.
+	for n = 1, 2 do
+		local key = self:GetAttribute("ps-tgtkey" .. n)
+		if key then self:SetBindingClick(false, key, self:GetAttribute("ps-tgtbtn" .. n), "LeftButton") end
+	end
 ]]):format(#CODES, #CODES)
 -- A state change drops a press in flight, so a later release can't go to the button it was aimed at.
 local ONSTATE_SNIPPET = ([[
@@ -683,6 +709,32 @@ for i, code in ipairs(CODES) do
 	router:EnableMouse(false)
 	router:RegisterForClicks("AnyDown", "AnyUp")
 	routers[i] = router
+end
+
+-- Gamepad UI off: the friendly and hostile buttons. Held, they bind (priority) the keys with a cell on their layer to
+-- those keys' routers, which read the held button and fire that layer; let go, the bindings go. A press that routed
+-- nothing is a tap: nearest friend or enemy, on the release.
+local TARGET_ROLES = { "friendly", "hostile" }
+local TARGET_SNIPPET = [[
+	if down then
+		self:SetAttribute("ps-used", nil)
+		self:SetAttribute("macrotext", "")
+		for n = 1, self:GetAttribute("ps-tn") or 0 do
+			local key, router = self:GetAttribute("ps-tkey" .. n), self:GetAttribute("ps-trouter" .. n)
+			if key and router then self:SetBindingClick(true, key, router, "LeftButton") end
+		end
+	else
+		self:ClearBindings()
+		self:SetAttribute("macrotext", self:GetAttribute("ps-used") and "" or self:GetAttribute("ps-tap"))
+	end
+]]
+local targeters = {}
+for i, role in ipairs(TARGET_ROLES) do
+	local button = CreateFrame("Button", "WowGamePadTweaksTarget" .. role:gsub("^%l", string.upper), UIParent, "SecureActionButtonTemplate")
+	button:SetSize(1, 1)
+	button:EnableMouse(false)
+	button:RegisterForClicks("AnyDown", "AnyUp")
+	targeters[i] = button
 end
 
 -- Snippets and state drivers are protected calls, so they wait for the first out-of-combat apply.
@@ -705,6 +757,15 @@ local function setup()
 		header:WrapScript(router, "OnClick", ROUTER_SNIPPET)
 		header:SetAttribute("ps-router" .. i, router:GetName())
 		SecureHandlerSetFrameRef(header, "router" .. i, router)
+		for n, role in ipairs(TARGET_ROLES) do SecureHandlerSetFrameRef(router, "tgt-" .. role, targeters[n]) end
+	end
+	for n, button in ipairs(targeters) do
+		button:SetAttribute("type", "macro")
+		button:SetAttribute("typerelease", "macro")
+		button:SetAttribute("pressAndHoldAction", true)
+		button:SetAttribute("ps-tap", TARGET_TAP[TARGET_ROLES[n]])
+		header:WrapScript(button, "OnClick", TARGET_SNIPPET)
+		header:SetAttribute("ps-tgtbtn" .. n, button:GetName())
 	end
 end
 
@@ -938,6 +999,9 @@ local function aim(router, actionBars, code, action, routes, mods, unresolved)
 		end
 	end
 	for role, index in pairs(mods) do router:SetAttribute("ps-i" .. role, index) end
+	-- The Gamepad UI's own targeting bars hold those layers.
+	router:SetAttribute("ps-ifriendly", nil)
+	router:SetAttribute("ps-ihostile", nil)
 
 	for _, override in ipairs(slot and OVERRIDES or {}) do
 		local kind, layer = override.kind, overrideLayer(override.cvar)
@@ -1133,6 +1197,11 @@ local function aimOff(router, routes, mods)
 		router:SetAttribute("ps-" .. layer, route and route[1] == "hold" and route[2] or nil)
 	end
 	for role, index in pairs(mods) do router:SetAttribute("ps-i" .. role, index) end
+	for _, role in ipairs(TARGET_ROLES) do
+		local key = modKey(role)
+		local index = key and C_GamePad.ButtonBindingToIndex(key)
+		router:SetAttribute("ps-i" .. role, index and index + 1)
+	end
 	for _, override in ipairs(OVERRIDES) do router:SetAttribute("ps-" .. override.kind .. "layer", nil) end
 end
 
@@ -1164,6 +1233,7 @@ local function applyNow(ignorePanel)
 	if off then enabled = (ignorePanel or not ns.panelOpen) and true
 	else enabled = (ignorePanel or not ns.panelOpen) and (not sameFace(face) or next(list)) and actionBars and button(actionBars, "topBar", 5) end
 	local mods, unresolved, parts, short = modifierIndexes(), {}, {}, {}
+	local targetKeys = { friendly = {}, hostile = {} }
 	wipe(bindCells)
 	-- Shadow slots are written only with the Gamepad UI on (bars 6-8 are the player's otherwise), out of combat and
 	-- not at combat start, and only with this pad's cells known: an unplugged or sleeping pad, or one without cells
@@ -1179,8 +1249,9 @@ local function applyNow(ignorePanel)
 		local action, label, routes = pos and face[pos], pos or code, {}
 		-- A paddle with a role keeps its cells, unrouted and without shadow slots, until it is freed again.
 		local carried = not PADDLES[code] or Face.PaddleFree(code)
-		for _, cellLayer in ipairs(CELL_LAYERS) do
-			local entry = carried and row[cellLayer] or nil
+		for _, cellLayer in ipairs(off and ALL_LAYERS or CELL_LAYERS) do
+			-- A targeting layer (off only) falls back to its standard action.
+			local entry = carried and (row[cellLayer] or TARGET_DEFAULTS[cellLayer] and Face.CellEntry(code, cellLayer)) or nil
 			local how, value
 			if entry then how, value = resolve(entry) end
 			-- A slot kind fires its shadow slot; placed now unless combat starts (else it stays macro text).
@@ -1196,6 +1267,11 @@ local function applyNow(ignorePanel)
 			-- Off: a face action becomes its game binding (none for Inspect), and a Dominos button fires from its own.
 			if off and how == "click" and OFF_FACE_BIND[value] then
 				how, value = "bind", OFF_FACE_BIND[value]
+			end
+			-- A targeting layer's key is bound only while its button is held: a game binding can't follow that.
+			if off and how == "bind" and TARGET_DEFAULTS[cellLayer] then
+				parts[#parts + 1] = string.format("%s %s can't go on a targeting bar", where, tostring(entry.id))
+				how, entry = nil, nil
 			elseif off and (how == "click" or how == "dominos") then
 				if how == "click" then parts[#parts + 1] = string.format("%s %s needs the Gamepad UI", where, tostring(entry.id)) end
 				how = nil
@@ -1212,13 +1288,17 @@ local function applyNow(ignorePanel)
 		elseif moved then slot = aim(router, actionBars, code, action, routes, mods, unresolved) end
 		-- The keys this router takes: its button's key, or off with the modifiers on, one per routed layer (a bind
 		-- layer's key goes to the listener alone).
-		local keys = {}
+		local keys, base = {}, false
+		for _, cellLayer in ipairs(CELL_LAYERS) do
+			if routes[cellLayer] and routes[cellLayer][1] ~= "bind" then base = true end
+		end
 		if moved and prefixed then
 			for _, cellLayer in ipairs(CELL_LAYERS) do
 				local route = routes[cellLayer]
 				if route and route[1] ~= "bind" then keys[#keys + 1] = OFF_PREFIX[cellLayer] .. key end
 			end
-		elseif moved then
+		elseif moved and (base or not off) then
+			-- Not for targeting cells alone: the targeting button binds the key while it is held.
 			keys[1] = key
 		end
 		local bindings
@@ -1246,6 +1326,13 @@ local function applyNow(ignorePanel)
 			local catcher = shown and slot and catcherFor(actionBars, code, cellLayer, slot) or catchers[code .. "/" .. cellLayer]
 			if catcher then aimCatcher(catcher, shown or nil, actionBars) end
 		end
+		-- Off: this key goes to its router while a targeting button is held, for the layers with a cell.
+		for _, cellLayer in ipairs(TARGET_LAYERS_OFF) do
+			if moved and routes[cellLayer] then
+				local list = targetKeys[CELL_LAYER[cellLayer]]
+				list[#list + 1] = { key, router:GetName() }
+			end
+		end
 		header:SetAttribute("ps-key" .. i, keys[1])
 		for n = 2, MAX_KEYS do header:SetAttribute("ps-key" .. i .. "-" .. n, keys[n]) end
 		-- The targeting bars that take the top layer's place while shown, as the router reads them.
@@ -1266,6 +1353,19 @@ local function applyNow(ignorePanel)
 			for _, part in ipairs(cellParts) do short[#short + 1] = part end
 			parts[#parts + 1] = string.format("%s(%s%s) %s", label, key, slot and ", slot " .. slot or "", table.concat(cellParts, " "))
 		end
+	end
+
+	-- The targeting buttons (Gamepad UI off): their own key, and the keys they swap while held. Bound even without cells,
+	-- for the tap.
+	for n, role in ipairs(TARGET_ROLES) do
+		local button, list = targeters[n], targetKeys[role]
+		header:SetAttribute("ps-tgtkey" .. n, off and enabled and modKey(role) or nil)
+		local old = button:GetAttribute("ps-tn") or 0
+		for k = 1, math.max(old, #list) do
+			button:SetAttribute("ps-tkey" .. k, list[k] and list[k][1])
+			button:SetAttribute("ps-trouter" .. k, list[k] and list[k][2])
+		end
+		button:SetAttribute("ps-tn", #list)
 	end
 
 	-- An override bar whose layer can't be resolved sends the routed keys back to native while it can be active.

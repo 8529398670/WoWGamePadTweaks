@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.4 — 2026-11-25
+
+### New: friendly and hostile targeting with the Gamepad UI off
+- With the Gamepad UI off, **hold your friendly or hostile button** (L1 / R1 out of the box) and press a D-pad or face button to target: the Gamepad UI's targeting bars, rebuilt for when it's off. Works in combat.
+- A **quick tap** of the friendly button targets the nearest friend; of the hostile button, the nearest enemy (tap again to cycle).
+- They start with a standard set. Friendly: A yourself, D-pad up / right / down / left party 1–4, B your focus, X assist, Y set focus. Hostile: A nearest enemy, B clear target, X assist, Y set focus, D-pad up your focus, down mark next, left start attack, right pet attack.
+- **Change any of them in /fct**: Bindings has a new **Targeting** page (after the bar pages) with a Friendly and a Hostile column. Any action works there except Jump, Interact, Back and Auto-run. Clearing a cell brings its standard action back.
+- With the Gamepad UI on nothing changes: its own targeting bars do this.
+
 ## 1.7.3 — 2026-11-25
 
 ### Fixed: Steer auto-run with the camera, Gamepad UI off

@@ -27,6 +27,17 @@ local function pageCount()
 	return n
 end
 
+-- The Targeting page's number, or nil with the Gamepad UI on (its own targeting bars do that then).
+local function targetingPage() return not ns.Active() and pageCount() + 1 or nil end
+local function totalPages() return pageCount() + (ns.Active() and 0 or 1) end
+local function onTargeting() return page == targetingPage() end
+-- The layer of each cell column on the shown page.
+local function columns() return onTargeting() and TARGET_LAYERS or LAYERS end
+local function pageLabel(n)
+	if n == targetingPage() then return L.TARGETING_PAGE end
+	return string.format(L.PAGE_OF, n, pageCount())
+end
+
 -- The stance / pet override bars replace one layer on a page (CVars GamepadStanceBarOverride and
 -- GamepadPossessBarOverride, read only; Enum names like "Page1LeftBar"). Returns a note for the current page.
 local OVERRIDE_CVARS = { { "GamepadStanceBarOverride", L.OVERRIDE_BARS.GamepadStanceBarOverride }, { "GamepadPossessBarOverride", L.OVERRIDE_BARS.GamepadPossessBarOverride } }
@@ -44,9 +55,12 @@ local function overrideNote()
 	end
 end
 local LAYERS = { "T", "L", "R", "B" }
-local LAYER_ROLE = { T = "top", L = "leftmod", R = "rightmod", B = "bottom" }
-local ROLE_LAYER = { leftmod = "L", rightmod = "R", bottom = "B" }
-local LAYER_INDEX = { T = 1, L = 2, R = 3, B = 4 }
+-- The Targeting page (Gamepad UI off only, after the crossbar pages): the friendly and hostile layers in the first
+-- two columns (Face.lua); the other two are hidden.
+local TARGET_LAYERS = { "F", "H" }
+local LAYER_ROLE = { T = "top", L = "leftmod", R = "rightmod", B = "bottom", F = "friendly", H = "hostile" }
+local ROLE_LAYER = { leftmod = "L", rightmod = "R", bottom = "B", friendly = "F", hostile = "H" }
+local LAYER_INDEX = { T = 1, L = 2, R = 3, B = 4, F = 1, H = 2 }
 
 -- Geometry (window units). Cells 34 (circles 32) on a 38 pitch; rows 38 tall on a 42 pitch in a box at each side, a
 -- layer header over each column's cells; both columns start level, the longer one centred in the area; the drawing
@@ -222,7 +236,7 @@ local function selectCell(cell)
 	if InCombatLockdown() then return end
 	if cell.slot and GetCursorInfo() then return PlaceAction(cell.slot) end
 	if not (cell.slot or cell.pos or ns.Face.SetCellEntry) then return end
-	UI.ActionPicker.Open({ window = window, cell = cell, code = cell.code, layer = cell.layer, slot = cell.slot, pos = cell.pos, page = page })
+	UI.ActionPicker.Open({ window = window, cell = cell, code = cell.code, layer = cell.layer, slot = cell.slot, pos = cell.pos, page = not onTargeting() and page or nil })
 end
 
 local function clearCell(cell)
@@ -576,9 +590,10 @@ end
 
 -- The bar a row shows: the held modifier's, else the focused cell's column, else the top bar.
 local function shownLayer()
-	if heldLayer then return heldLayer end
+	local list = columns()
+	if heldLayer and tContains(list, heldLayer) then return heldLayer end
 	local region = window.focus and window.focus.region
-	return region and region.layer or "T"
+	return region and region.layer or list[1]
 end
 
 -- A modifier row: its role and what that does; in guided mode, where the button stands (grey while not set).
@@ -594,6 +609,7 @@ end
 local function rowText(row, layer)
 	if row.kind == "mod" then return modText(row) end
 	local cell = row.cells[LAYER_INDEX[layer]]
+	if not (cell and cell.layer == layer) then cell, layer = row.cells[1], row.cells[1].layer end
 	local word = UI.ROLE[LAYER_ROLE[layer]].word
 	if UI.MOD_CODES[row.code] or STICKS[row.code] then return boundName(cell), string.format(L.PADDLE_SUB, UI.Name(row.code), word) end
 	return boundName(cell), string.format(cell.reserved and L.FACE_SUB or L.BAR_SUB, word)
@@ -619,7 +635,7 @@ local function drawNames()
 		end
 	end
 	local region = window.focus and window.focus.region
-	B.LightLayerHeaders(tabs, layer, region and region.layer and (region.row.left and "left" or "right"))
+	B.LightLayerHeaders(tabs, layer, region and region.layer and (region.row.left and "left" or "right"), columns())
 end
 
 -- The focused row's line runs into its control, which lights up (in guided mode the detected button's, with only
@@ -694,10 +710,15 @@ function B.NewLayerHeaders(owner)
 	return headers
 end
 
--- The headers follow the player's roles (who holds which bar).
-function B.FillLayerHeaders(headers, roles)
+-- The headers follow the player's roles (who holds which bar). layers: the columns' layers (default the four bars);
+-- a column without one hides its header.
+function B.FillLayerHeaders(headers, roles, layers)
+	layers = layers or LAYERS
 	for _, side in pairs(headers) do
-		for i, tab in ipairs(side) do fillTab(tab, LAYERS[i], roles) end
+		for i, tab in ipairs(side) do
+			if layers[i] then fillTab(tab, layers[i], roles) end
+			tab:SetShown(layers[i] ~= nil)
+		end
 	end
 end
 
@@ -711,10 +732,11 @@ end
 
 -- Only the focused side's header of the shown layer is lit ("left" or "right"); with the focus off the cells
 -- (a modifier row, the header) neither side is.
-function B.LightLayerHeaders(headers, layer, side)
+function B.LightLayerHeaders(headers, layer, side, layers)
+	layers = layers or LAYERS
 	for name, list in pairs(headers) do
 		for i, tab in ipairs(list) do
-			local on = name == side and LAYERS[i] == layer
+			local on = name == side and layers[i] == layer
 			tab.highlight:SetShown(on)
 			tab:SetAlpha(on and 1 or 0.55)
 		end
@@ -743,7 +765,7 @@ local function build()
 	box:SetPoint("CENTER")
 	selector.text = selector:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	selector.text:SetPoint("CENTER")
-	selector:SetScript("OnClick", function() B.SetPage(page % pageCount() + 1) end)
+	selector:SetScript("OnClick", function() B.SetPage(page % totalPages() + 1) end)
 	window.pageSelector = selector
 	-- Left of the selector, right-aligned and wrapped, so a long override note stays clear of the right header.
 	window.pageNote = UI.Text(window, "GameFontDisableSmall", nil, nil, nil, 420)
@@ -843,12 +865,13 @@ local function refresh()
 	drawing:Place(unpack(DRAWING_PLACE))
 
 	local roles, face = Layout.Roles(), Layout.Face()
-	B.FillLayerHeaders(tabs, roles)
-
-	local count = pageCount()
+	local count = totalPages()
 	page = math.min(page, count)
+	local layers = columns()
+	B.FillLayerHeaders(tabs, roles, layers)
+
 	local selector = window.pageSelector
-	selector.text:SetText(string.format(L.PAGE_OF, page, count))
+	selector.text:SetText(pageLabel(page))
 	selector.previous:SetDisabled(page <= 1)
 	selector.next:SetDisabled(page >= count)
 	window.pageNote:SetText(overrideNote() or "")
@@ -875,7 +898,13 @@ local function refresh()
 				if code == focusCode then window.focus = { region = plate } end
 			end
 			for j, cell in ipairs(row.cells) do
-				fillCell(cell, row.face and j == 1 and face[UI.CODE_POS[code]] or nil)
+				cell.layer = layers[j]
+				cell:SetShown(cell.layer ~= nil)
+			end
+			for j, cell in ipairs(row.cells) do
+				if not cell.layer then break end
+				-- The face action shows on the base layer of the bars only.
+				fillCell(cell, row.face and cell.layer == "T" and face[UI.CODE_POS[code]] or nil)
 				local node = UI.Node(window, cell, function() selectCell(cell) end, { onFocus = function(on) setCellFocus(cell, on) end, tip = function() return cellTip(cell) end })
 				nodes[#nodes + 1] = node
 				if code == "DU" and j == 1 then first = node end
@@ -889,7 +918,7 @@ local function refresh()
 
 	nodes[#nodes + 1] = UI.Node(window, selector, function() B.SetPage(page % count + 1) end, {
 		onDir = function(step) B.SetPage(page + step) end,
-		tip = { title = string.format(L.PAGE_OF, page, count), lines = { L.PAGE_TIP }, actions = { { "PADLTRIGGER", L.PAGE_PREVIOUS }, { "PADRTRIGGER", L.PAGE_NEXT } }, side = "below" },
+		tip = { title = pageLabel(page), lines = { onTargeting() and L.TARGETING_TIP or L.PAGE_TIP }, actions = { { "PADLTRIGGER", L.PAGE_PREVIOUS }, { "PADRTRIGGER", L.PAGE_NEXT } }, side = "below" },
 	})
 
 	selector:SetShown(not guided)
@@ -1105,7 +1134,7 @@ local function setup()
 		if key ~= "PAD4" then return end
 		-- More: on a cell its Healer mode row first, on a free paddle's cell its role list next, then the presets (the active one ticked), the pages and the
 		-- common entries.
-		local count, entries = pageCount(), {}
+		local count, entries = totalPages(), {}
 		local region = window.focus and window.focus.region
 		local row = region and region.layer and region.row
 		local paddleRow = row and UI.MOD_CODES[row.code] and row
@@ -1116,7 +1145,7 @@ local function setup()
 		for _, name in ipairs({ "native", "split" }) do
 			entries[#entries + 1] = { id = name, name = UI.PresetLabel(name), detail = L.PRESET_TIP, live = true, run = function() report(Layout.SetPreset(name)) end }
 		end
-		for n = 1, count do entries[#entries + 1] = { id = "page" .. n, name = string.format(L.PAGE_OF, n, count), detail = L.PAGE_TIP, run = function() B.SetPage(n) end } end
+		for n = 1, count do entries[#entries + 1] = { id = "page" .. n, name = pageLabel(n), detail = n == targetingPage() and L.TARGETING_TIP or L.PAGE_TIP, run = function() B.SetPage(n) end } end
 		UI.OpenMore(window, entries, Layout.PresetName(storedRoles()))
 		return true
 	end
@@ -1139,7 +1168,7 @@ local function setup()
 end
 
 function B.SetPage(n)
-	local count = pageCount()
+	local count = totalPages()
 	n = math.max(1, math.min(count, n))
 	if n == page then return end
 	page = n
