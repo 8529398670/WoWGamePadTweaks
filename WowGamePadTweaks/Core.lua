@@ -565,7 +565,7 @@ local HELP = "/fct (or /controllertweaks) opens the settings; so do L2 + R2 + Cr
 	.. " | preset native|split | role <L1 R1 L2 R2 P1-P4> <leftmod rightmod friendly hostile none>"
 	.. " | face <bottom right left top> <interact inspect back jump> | learn <L1 R1 L2 R2 P1-P4>|cancel | reset (the layout)"
 	.. " | whatsnew (what's new in this version; turns it back on) | cleanup (finds duplicate FCT: macros and stray hidden slots and tidies them)"
-	.. " | profile (this character's) | profile <name> (this character plays on it) | sync (status; now, on, off, undo) | export | import | release (gives back every slot and macro before uninstalling) | status | selftest | ringlog | debug on|off | help"
+	.. " | profile (this character's) | profile <name> (this character plays on it) | sync (status; now, on, off, undo) | export | import | release (gives back every slot and macro before uninstalling) | dominos (controller buttons in Dominos binding mode; mods on|off) | status | selftest | ringlog | debug on|off | help"
 
 function ns.commands.help() ns.log(HELP) end
 

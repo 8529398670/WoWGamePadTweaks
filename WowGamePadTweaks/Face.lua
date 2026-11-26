@@ -100,8 +100,12 @@ local ROUTER_SNIPPET = [[
 				end
 			end
 		end
-		slot = self:GetAttribute("ps-action-" .. layer)
-		if slot then name = "action"
+		-- A Dominos button (DominosBind.lua): the action it shows now, so its own paging and stances count. Nothing
+		-- while it shows none.
+		local dominos = self:GetFrameRef("dominos-" .. layer)
+		slot = dominos and tonumber(dominos:GetAttribute("action")) or self:GetAttribute("ps-action-" .. layer)
+		if dominos then name = slot and slot > 0 and "action" or nil
+		elseif slot then name = "action"
 		elseif self:GetAttribute("ps-entry-" .. layer) then name = "entry"
 		elseif self:GetAttribute("ps-ring-" .. layer) then name = "ring"
 		else
@@ -570,11 +574,17 @@ function Face.SetCellEntry(code, layer, entry, page)
 		local ok, err = clearUnder(code, layer, page)
 		if not ok then return nil, err end
 	end
+	local old = row[layer]
 	row[layer] = new
 	list[code] = next(row) and row or nil
+	-- A Dominos button replaced or cleared here: DominosBind.lua drops its matching game binding too.
+	if old and old.kind == "dominos" and not (new and new.id == old.id) then ns.Fire("FCT_DOMINOS_CELL_LEFT", code, layer, old) end
 	ns.Fire("FCT_LAYOUT_CHANGED", "layout")
 	return true
 end
+
+-- For DominosBind.lua: the row codes in router order, each code's native key, and the key its router binds now.
+Face.CODES, Face.CODE_KEY, Face.KeyOf = CODES, CODE_KEY, keyOf
 
 -- Healer mode on a cell (Rings.HealerRing): its entry gets healer = true and the cell opens a ring of the group. A cell
 -- without an entry copies the spell or item in its crossbar slot on page (default 1) as an entry with native = true,
@@ -739,12 +749,21 @@ end
 -- and press dent, and sits one frame level above it (a child's default level). Made and set out of combat; shown by the header's snippets
 -- only while routed. Keyed "code/layer".
 local catchers, catcherCount, shadowOf = {}, 0, {}
+-- "code/layer" -> the Dominos button a routed cell fires (as of the last apply).
+local dominosOf = {}
 
--- Blizzard's tooltip for an action button (ActionBarActionButtonMixin:SetTooltip), on the shadow slot.
+local function dominosSlot(frame)
+	local slot = frame and tonumber(frame:GetAttribute("action"))
+	return slot and slot > 0 and slot or nil
+end
+
+-- Blizzard's tooltip for an action button (ActionBarActionButtonMixin:SetTooltip), on the shadow slot (or the slot a
+-- Dominos button shows now).
 local function catcherTooltip(self)
-	if not self.shadow then return end
+	local slot = self.shadow or dominosSlot(self.dominos)
+	if not slot then return end
 	if GetCVar("UberTooltips") == "1" then GameTooltip_SetDefaultAnchor(GameTooltip, self) else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
-	self.UpdateTooltip = GameTooltip:SetAction(self.shadow) and catcherTooltip or nil
+	self.UpdateTooltip = GameTooltip:SetAction(slot) and catcherTooltip or nil
 end
 
 local function catcherLeave(self)
@@ -795,7 +814,11 @@ local function aimCatcher(catcher, route, actionBars)
 	local name = click and click:GetName()
 	-- A hold action's button, clicked once from a catcher: its toggle (RightButton).
 	local text = name and Face.ClickBoth(name) or how == "text" and value or how == "hold" and "/click " .. value .. " RightButton" or nil
-	catcher:SetAttribute("type", how == "action" and "action" or text and "macro" or nil)
+	-- A Dominos button: the catcher clicks it, as a mouse click on the button itself would.
+	local dominos = how == "dominos" and value or nil
+	catcher:SetAttribute("type", how == "action" and "action" or dominos and "click" or text and "macro" or nil)
+	catcher:SetAttribute("clickbutton", dominos)
+	catcher.dominos = dominos
 	catcher:SetAttribute("typerelease", how == "action" and "actionrelease" or nil)
 	catcher:SetAttribute("action", how == "action" and value or nil)
 	catcher:SetAttribute("macrotext", text)
@@ -858,6 +881,13 @@ local function resolve(entry)
 	local ring = tonumber(tostring(entry.id):match("^ring:(%d+)$"))
 	if ring then
 		if ns.Rings and ns.Rings.Get(ring) then return "ring", ring end
+		return
+	end
+	-- A Dominos button (DominosBind.lua): the router fires its action, read at the press.
+	local dominos = tostring(entry.id):match("^dominos:(.+)$")
+	if dominos then
+		local frame = _G[dominos]
+		if type(frame) == "table" and frame.IsProtected and frame:IsProtected() then return "dominos", frame end
 		return
 	end
 	local text = entryText(entry)
@@ -1113,7 +1143,9 @@ local function applyNow(ignorePanel)
 			end
 			router:SetAttribute("ps-action-" .. layer, how == "action" and route[2] or nil)
 			router:SetAttribute("ps-ring-" .. layer, how == "ring" and route[2] or nil)
+			if how == "dominos" then SecureHandlerSetFrameRef(router, "dominos-" .. layer, route[2]) else router:SetAttribute("frameref-dominos-" .. layer, nil) end
 			shadowOf[code .. "/" .. cellLayer] = route and route[1] == "action" and route[2] or nil
+			dominosOf[code .. "/" .. cellLayer] = how == "dominos" and route[2] or nil
 			-- A moved face action on the base layer is a routed cell too.
 			local shown = how and route or slot and cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and { "click", action } or nil
 			local catcher = shown and slot and catcherFor(actionBars, code, cellLayer, slot) or catchers[code .. "/" .. cellLayer]
@@ -1196,8 +1228,11 @@ function Face.State()
 	return string.format("%s, state %s, shadow %s, catchers %d", summary, tostring(header:GetAttribute("state-face")), shadow, shown)
 end
 
--- The shadow action slot a routed cell fires, or nil (as of the last apply).
-function Face.Slot(code, layer) return shadowOf[code .. "/" .. tostring(layer)] end
+-- The shadow action slot a routed cell fires, or the slot its Dominos button shows now, or nil (as of the last apply).
+function Face.Slot(code, layer)
+	local key = code .. "/" .. tostring(layer)
+	return shadowOf[key] or dominosSlot(dominosOf[key])
+end
 
 -- The routed cells of this character and pad whose entry fires from a shadow slot: { code, layer, id } each (a paddle
 -- with a role and Healer mode cells fire none). Actions.lua gives them back their slots after lost settings.

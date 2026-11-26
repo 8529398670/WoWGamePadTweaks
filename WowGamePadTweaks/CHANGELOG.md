@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 — 2026-11-25
+
+### New: controller buttons in Dominos binding mode
+- Open Dominos' binding mode, point at a button with the mouse and **press a controller button** to bind it. Hold your **L2 / R2 bar buttons** (the crossbar modifiers) for combos: L2 + A, R2 + A, or both + A.
+- **Back** (Select / View / Share) over a button clears it, like Escape.
+- Works with the **Gamepad UI on or off**. Off: the two bar buttons act as Shift and Ctrl, so L2 + A is a normal game binding (Shift + A) that works in combat. On: the button lands on the matching crossbar cell, so L2 + A fires it from the left bar.
+- A Dominos binding **wins**: it replaces what that button and bar had in /fct, and the Bindings window shows the Dominos button there. Put something else on that cell in /fct and the Dominos binding goes, so the two never disagree.
+- Button labels show the controller's names, like **LT+A**.
+- `/fct dominos` shows what's set; `/fct dominos mods off` stops the bar buttons acting as Shift and Ctrl while the Gamepad UI is off (your own settings come back). Turning the Gamepad UI on puts them back too.
+- Bartender's binding mode works the same way.
+
 ## 1.6.4 — 2026-11-25
 
 ### New: Steer auto-run with the camera

@@ -74,7 +74,11 @@ end
 function SlotView.EntryIcon(entry)
 	local id = entry and entry.kind == "ring" and tonumber(tostring(entry.id):match("^ring:(%d+)$"))
 	if id and ns.Rings then return ns.Rings.LiveIcon(id) end
-	return entry and entry.icon
+	-- A Dominos button (DominosBind.lua): the icon of what it shows now.
+	local dominos = entry and entry.kind == "dominos" and _G[tostring(entry.id):match("^dominos:(.+)$") or ""]
+	local slot = type(dominos) == "table" and dominos.GetAttribute and tonumber(dominos:GetAttribute("action"))
+	local live = slot and slot > 0 and GetActionTexture(slot)
+	return live or entry and entry.icon
 end
 
 -- Mask inset (template CircleMask/SquareMask), drop shadow distance (collapsed style), checked distance (set on the
