@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.7 — 2026-11-25
+
+### New: quest and NPC windows by controller (Gamepad UI off)
+- With the Gamepad UI off, a quest or NPC chat window now takes the controller: **D-pad** moves a gold highlight over its options, quests, reward choices and buttons, **A** picks the highlighted one and **B** closes the window.
+- It starts on **Accept**, **Continue** or **Complete Quest**, so taking or handing in a quest is just A, A. On a reward choice, A picks it and moves on to Complete Quest. Reward tooltips show as you move over them.
+- A hint under the window shows the buttons. It works out of combat (the game doesn't let bindings change in a fight).
+
+### Fixed: RT and R1 turned off again after the controller reconnected
+- When the controller went to sleep and woke up, the game reset RT and R1 a moment after reconnecting, so combos stopped again. The addon now writes them again shortly after a reconnect, and if you hold RT or R1 and the game doesn't count it as Ctrl or Shift, it fixes it on the spot.
+- Each fix is noted in the saved debug log.
+
 ## 1.7.6 — 2026-11-25
 
 ### Fixed: RT and R1 stopped working as Ctrl and Shift (Gamepad UI off)

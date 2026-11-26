@@ -161,22 +161,26 @@ function DominosBind.ModsOn()
 	return not ns.Active() and ns.db ~= nil and store().mods ~= false and GetCVar(EMULATE.shift) ~= nil and GetCVar(EMULATE.ctrl) ~= nil
 end
 
+-- Writes the emulated modifiers again even when the CVars already read right: the game can hold the value without
+-- applying it (at login, and a moment after a controller reconnects), and only a change makes it take effect. Just
+-- the two CVars, so the self-check below can run it on a press (in combat too, if the game allows it there).
+function DominosBind.Reapply(reason)
+	if not DominosBind.ModsOn() then return end
+	local left, right = modNatives()
+	for name, value in pairs({ [EMULATE.shift] = left or "NONE", [EMULATE.ctrl] = right or "NONE" }) do
+		pcall(SetCVar, name, "NONE")
+		pcall(SetCVar, name, value)
+	end
+	ns.debug("dominos modifiers applied (%s): shift %s, ctrl %s", tostring(reason), tostring(GetCVar(EMULATE.shift)), tostring(GetCVar(EMULATE.ctrl)))
+end
+
 local function syncMods()
 	if InCombatLockdown() or not ns.db then return end
 	local saved = store()
 	if DominosBind.ModsOn() then
 		local left, right = modNatives()
 		if not saved.saved then saved.saved = { shift = GetCVar(EMULATE.shift), ctrl = GetCVar(EMULATE.ctrl) } end
-		-- Written again even when the saved value already matches: at login the game can hold the value without
-		-- applying it (RT stopped acting as Ctrl in 1.7.5 though GamePadEmulateCtrl read PADRTRIGGER), and only a
-		-- change makes it take effect.
-		for name, value in pairs({ [EMULATE.shift] = left or "NONE", [EMULATE.ctrl] = right or "NONE" }) do
-			if GetCVar(name) ~= nil then
-				SetCVar(name, "NONE")
-				SetCVar(name, value)
-			end
-		end
-		ns.debug("dominos modifiers applied: shift %s, ctrl %s", tostring(GetCVar(EMULATE.shift)), tostring(GetCVar(EMULATE.ctrl)))
+		DominosBind.Reapply("sync")
 	elseif type(saved.saved) == "table" then
 		if saved.saved.shift then setCVar(EMULATE.shift, saved.saved.shift) end
 		if saved.saved.ctrl then setCVar(EMULATE.ctrl, saved.saved.ctrl) end
@@ -247,6 +251,38 @@ for _, event in ipairs({ "FCT_ACTIVE_CHANGED", "PLAYER_ENTERING_WORLD", "FCT_LAY
 		if hooked then refreshHotkeys() end
 	end)
 end
+
+-- The game applies a reconnected controller's settings after it says so, undoing the modifiers written on the event:
+-- write them again a moment later too (also after a login or reload, for the same reason).
+for _, event in ipairs({ "GAME_PAD_CONNECTED", "GAME_PAD_ACTIVE_CHANGED", "PLAYER_ENTERING_WORLD" }) do
+	ns.On(event, function()
+		for _, delay in ipairs({ 0.5, 2, 5 }) do
+			C_Timer.After(delay, function() DominosBind.Reapply(event) end)
+		end
+	end)
+end
+
+-- Self-check: a press of a modifier button that the game doesn't turn into Shift or Ctrl (the setting was dropped
+-- again, whatever dropped it) writes the modifiers again on the spot, so the next combo works. Logged, so the saved
+-- debug log shows when and how often it happens.
+local watch = CreateFrame("Frame", nil, UIParent)
+watch:EnableGamePadButton(true)
+watch:SetPropagateKeyboardInput(true)
+watch:SetScript("OnGamePadButtonDown", function(_, key)
+	if not DominosBind.ModsOn() then return end
+	local left, right = modNatives()
+	local test = key == left and IsShiftKeyDown or key == right and IsControlKeyDown
+	if not test then return end
+	C_Timer.After(0.1, function()
+		local ok, state = pcall(C_GamePad.GetDeviceMappedState)
+		local index = C_GamePad.ButtonBindingToIndex(key)
+		local held = ok and state and state.buttons and index and state.buttons[index + 1]
+		if held and not test() then
+			ns.debug("dominos modifier %s held but not seen as %s: writing it again", key, key == left and "Shift" or "Ctrl")
+			DominosBind.Reapply("self-check")
+		end
+	end)
+end)
 
 -- True when key's game binding clicks this action bar button (Dominos' "CLICK <button>:HOTKEY" or its command name).
 -- name nil: any protected action bar button (Dominos, Bartender).
