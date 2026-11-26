@@ -984,14 +984,22 @@ local function currentLayer(cell, mods)
 	return "top"
 end
 
+-- Keys of the static (Gamepad UI off) bindings now bound: kept when combat starts.
+local staticKeys = {}
+
 local function updateBindCells()
 	if InCombatLockdown() then return end
 	local live = next(bindCells) and header:GetAttribute("state-face") == "routed" and header:GetAttribute("ps-enabled") and ns.padFree()
 	local want, mods = {}, live and modifierIndexes()
+	wipe(staticKeys)
 	for _, cell in ipairs(live and bindCells or {}) do
 		if cell.static then
-			-- Gamepad UI off: each layer has its own key (Face.OFF_PREFIX), bound whatever is held.
-			for key, command in pairs(cell.static) do want[key] = command end
+			-- Gamepad UI off: each layer has its own key (Face.OFF_PREFIX), bound whatever is held, so it stays bound
+			-- through combat.
+			for key, command in pairs(cell.static) do
+				want[key] = command
+				staticKeys[key] = true
+			end
 		else
 			local command = cell.layers[currentLayer(cell, mods)]
 			if command then want[cell.key] = command end
@@ -1132,6 +1140,10 @@ end
 -- (DominosBind.lua): the modifier buttons make it a different key per layer, so a layer without a cell keeps the
 -- key's own binding.
 local OFF_PREFIX = { T = "", L = "SHIFT-", R = "CTRL-", B = "CTRL-SHIFT-" }
+-- Off, the face actions are game bindings (their crossbar buttons are gone): bound to the key like Auto-run, so
+-- Jump holds and Interact loots as on a keyboard. Back is the Escape key's command (stops a cast, clears the target,
+-- closes a window). Inspect has no game binding: it needs the Gamepad UI.
+local OFF_FACE_BIND = { jump = "JUMP", interact = "INTERACTTARGET", back = "TOGGLEGAMEMENU" }
 Face.OFF_PREFIX = OFF_PREFIX
 local MAX_KEYS = 4
 
@@ -1149,7 +1161,7 @@ local function applyNow(ignorePanel)
 	local off = not ns.Active()
 	local prefixed = off and ns.DominosBind and ns.DominosBind.ModsOn()
 	local enabled
-	if off then enabled = (ignorePanel or not ns.panelOpen) and next(list) and true
+	if off then enabled = (ignorePanel or not ns.panelOpen) and true
 	else enabled = (ignorePanel or not ns.panelOpen) and (not sameFace(face) or next(list)) and actionBars and button(actionBars, "topBar", 5) end
 	local mods, unresolved, parts, short = modifierIndexes(), {}, {}, {}
 	wipe(bindCells)
@@ -1181,8 +1193,10 @@ local function applyNow(ignorePanel)
 			-- A cell that no longer holds a slot kind gives its shadow slot back.
 			if writable and not slotKind then Actions.ReleaseShadow(code, cellLayer) end
 			local where = label .. (cellLayer == "T" and "" or "/" .. cellLayer)
-			-- Off: a face action needs its crossbar button, and a Dominos button fires from its own game binding.
-			if off and (how == "click" or how == "dominos") then
+			-- Off: a face action becomes its game binding (none for Inspect), and a Dominos button fires from its own.
+			if off and how == "click" and OFF_FACE_BIND[value] then
+				how, value = "bind", OFF_FACE_BIND[value]
+			elseif off and (how == "click" or how == "dominos") then
 				if how == "click" then parts[#parts + 1] = string.format("%s %s needs the Gamepad UI", where, tostring(entry.id)) end
 				how = nil
 				entry = nil
@@ -1190,6 +1204,8 @@ local function applyNow(ignorePanel)
 			if how then routes[cellLayer] = { how, value, entry.name } end
 			if entry and not how then parts[#parts + 1] = string.format("%s entry %s unavailable", where, tostring(entry.id)) end
 		end
+		-- Off: a face button's base layer without a cell runs its face action from the layout (Jump on A...).
+		if off and pos and not row.T and OFF_FACE_BIND[action] then routes.T = { "bind", OFF_FACE_BIND[action], action } end
 		local moved = enabled and (next(routes) or (not off and pos and action ~= Layout.NATIVE_FACE[pos]))
 		local slot
 		if moved and off then aimOff(router, routes, mods)
@@ -1390,8 +1406,13 @@ end)
 ns.On("FCT_COMBAT_START", function()
 	if ns.padFree() then apply(true) end
 	-- Bindings can't change in combat: a bind cell's key goes back to the router (which does nothing on that bar).
-	ClearOverrideBindings(bindListener)
-	wipe(bound)
+	-- A static one (Gamepad UI off: Jump on A, Auto-run on a layer key) holds whatever is pressed, so it stays.
+	for key in pairs(bound) do
+		if not staticKeys[key] then
+			SetOverrideBinding(bindListener, true, key, nil)
+			bound[key] = nil
+		end
+	end
 end)
 ns.On("PLAYER_REGEN_ENABLED", function() updateBindCells() end)
 -- Closing a Blizzard window clears its SetOverrideBinding(UIParent, false, key, "") masks, which can leave ours

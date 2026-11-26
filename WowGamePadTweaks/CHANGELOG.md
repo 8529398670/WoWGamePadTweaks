@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.2 — 2026-11-25
+
+### Fixed: Jump and the other face actions with the Gamepad UI off
+- With the Gamepad UI off, **A did nothing** even though /fct showed Jump on it: the face actions only lived on the crossbar.
+- Now they're real game bindings while the Gamepad UI is off: **Jump**, **Interact** (interact with your target) and **Back** (the Escape key: stops a cast, clears your target, closes a window), on whichever face button /fct shows them, and on any bar you put them on. They work in combat too.
+- **Inspect** has no game binding, so it still needs the Gamepad UI.
+- A face button bar you gave another action, or a Dominos button, keeps that instead.
+
 ## 1.7.1 — 2026-11-25
 
 ### New: /fct works with the Gamepad UI off
