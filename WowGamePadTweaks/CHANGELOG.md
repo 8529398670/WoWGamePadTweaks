@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.3 — 2026-11-25
+
+### Fixed: Steer auto-run with the camera, Gamepad UI off
+- **Steer auto-run with camera** (Tweaks tab) now works with the Gamepad UI off too, so the right stick steers auto-run while you play with Dominos. Turn the tweak off and your old setting comes back.
+
 ## 1.7.2 — 2026-11-25
 
 ### Fixed: Jump and the other face actions with the Gamepad UI off

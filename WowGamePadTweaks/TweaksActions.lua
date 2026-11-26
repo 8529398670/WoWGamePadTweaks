@@ -269,8 +269,8 @@ ns.On("PLAYER_REGEN_ENABLED", zoomAtLogin)
 ---------------------------------------------------------------------------------------------------------------------
 -- Steer auto-run with camera (Tweaks): GamePadTurnWithCamera 2 (always) instead of the game's 1 (in combat only), so
 -- the character turns with the right stick and auto-run follows it out of combat too. A left-stick push still ends
--- auto-run: that is the game's, no addon can change it. While the tweak and the Gamepad UI are on the CVar is 2; the
--- value it had before is kept in WowGamePadTweaksDB.steerCameraWas and put back when either goes off, and at logout
+-- auto-run: that is the game's, no addon can change it. While the tweak is on the CVar is 2, with the Gamepad UI on or off; the
+-- value it had before is kept in WowGamePadTweaksDB.steerCameraWas and put back when the tweak goes off, and at logout
 -- (so the game's saved value stays the player's own), then set again at the next login. Never written in combat: a
 -- change waits for the fight to end.
 local STEER_CVAR, STEER_ON = "GamePadTurnWithCamera", "2"
@@ -285,7 +285,7 @@ function Tweaks.Steer(leaving)
 	if not ns.db or InCombatLockdown() then return end
 	local now = call(GetCVar, STEER_CVAR)
 	if type(now) ~= "string" then return end
-	if not leaving and Tweaks.Is("steerAutoRun") then
+	if not leaving and Tweaks.Get("steerAutoRun") then
 		if ns.db.steerCameraWas == nil then ns.db.steerCameraWas = now end
 		writeSteer(STEER_ON)
 	elseif type(ns.db.steerCameraWas) == "string" then
