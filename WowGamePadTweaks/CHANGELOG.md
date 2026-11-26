@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1 — 2026-11-25
+
+### New: /fct works with the Gamepad UI off
+- **/fct opens with the Gamepad UI off**, so you can keep setting up your buttons while you play with Dominos (or the normal bars).
+- What you put on a button in **Bindings runs with the Gamepad UI off too**: spells, items, macros, game commands, rings, hold actions and Auto-run, on every bar (alone, L2, R2, L2 + R2).
+- Your L2 and R2 bar buttons act as Shift and Ctrl while the Gamepad UI is off, so each bar of a button is its own key: a bar you didn't fill in /fct keeps whatever the game or Dominos has there.
+- Not while it's off: actions sitting in the crossbar's own slots and moving Jump, Interact, Back and Inspect between the face buttons. Those need the crossbar, so the Bindings window leaves crossbar slots empty while the Gamepad UI is off. Put the action on the cell again and it runs either way.
+- Whatever you set last wins: putting an action on a cell in /fct takes that combo from a Dominos button, and binding a Dominos button with the controller takes the cell.
+- Controller detection (Setup) still needs the Gamepad UI on.
+
 ## 1.7.0 — 2026-11-25
 
 ### New: controller buttons in Dominos binding mode

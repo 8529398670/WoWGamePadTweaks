@@ -294,10 +294,11 @@ function UI.Fit(window)
 	window:SetScale(math.min(1, UIParent:GetWidth() / 2 / halfWidth, UIParent:GetHeight() / 2 / halfHeight))
 end
 
--- The addon works only with the Gamepad UI: any other window asked for while it is off shows the notice instead.
+-- With the Gamepad UI off the windows still open (routed cells run without it, Face.lua); controller detection
+-- needs it, so that one shows the notice instead.
 function UI.Show(window)
 	if InCombatLockdown() then return ns.log(UI.L.COMBAT) end
-	if not window.notice and not ns.Active() then return UI.ShowNotice() end
+	if window.detect and not ns.Active() then return UI.ShowNotice() end
 
 	local old = current
 	current = window
@@ -346,8 +347,9 @@ ns.On("PLAYER_REGEN_ENABLED", function()
 	end)
 end)
 
-ns.On("FCT_ACTIVE_CHANGED", function(active)
-	if not active and current and not current.notice then UI.CloseAll() end
+-- What a window shows (crossbar slots, the face actions) changes with the Gamepad UI, so it closes either way.
+ns.On("FCT_ACTIVE_CHANGED", function()
+	if current and not current.notice then UI.CloseAll() end
 end)
 
 -- One redraw of a window on the next frame, however many changes asked for it in this one (a preset or a Learn run

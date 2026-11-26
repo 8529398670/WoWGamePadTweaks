@@ -17,7 +17,7 @@ local DominosBind = {}
 ns.DominosBind = DominosBind
 
 local LAYERS = { "T", "L", "R", "B" }
-local PREFIX = { T = "", L = "SHIFT-", R = "CTRL-", B = "CTRL-SHIFT-" }
+local PREFIX = ns.Face.OFF_PREFIX
 local CLEAR_KEY = "PADBACK"
 local EMULATE = { shift = "GamePadEmulateShift", ctrl = "GamePadEmulateCtrl" }
 
@@ -150,17 +150,21 @@ listener:SetScript("OnGamePadButtonUp", function(self, key)
 	if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
 end)
 
--- The emulated modifiers: on while a LibKeyBound user is loaded, the Gamepad UI is off and /fct dominos mods isn't
--- off; the player's own values are kept in the store and put back otherwise.
+-- The emulated modifiers: on while the Gamepad UI is off and /fct dominos mods isn't off (and the game has the
+-- options); the player's own values are kept in the store and put back otherwise. Face.lua then binds a key per
+-- layer (Face.OFF_PREFIX).
 local function setCVar(name, value)
 	if GetCVar(name) ~= nil and GetCVar(name) ~= value then SetCVar(name, value) end
+end
+
+function DominosBind.ModsOn()
+	return not ns.Active() and ns.db ~= nil and store().mods ~= false and GetCVar(EMULATE.shift) ~= nil and GetCVar(EMULATE.ctrl) ~= nil
 end
 
 local function syncMods()
 	if InCombatLockdown() or not ns.db then return end
 	local saved = store()
-	if lib() and saved.mods ~= false and not ns.Active() then
-		if GetCVar(EMULATE.shift) == nil then return end
+	if DominosBind.ModsOn() then
 		local left, right = modNatives()
 		if not saved.saved then saved.saved = { shift = GetCVar(EMULATE.shift), ctrl = GetCVar(EMULATE.ctrl) } end
 		setCVar(EMULATE.shift, left or "NONE")
@@ -170,6 +174,7 @@ local function syncMods()
 		if saved.saved.ctrl then setCVar(EMULATE.ctrl, saved.saved.ctrl) end
 		saved.saved = nil
 	end
+	ns.Face.Refresh()
 end
 
 local function refreshHotkeys()
@@ -222,34 +227,49 @@ local function setUp()
 		wipe(held)
 	end)
 	refreshHotkeys()
-	ns.whenPadFree("dominos modifiers", syncMods)
 end
 
 ns.On("PLAYER_LOGIN", setUp)
 ns.On("ADDON_LOADED", setUp)
+-- Roles decide the modifier buttons; a cell change alone needs nothing here.
 for _, event in ipairs({ "FCT_ACTIVE_CHANGED", "PLAYER_ENTERING_WORLD", "FCT_LAYOUT_CHANGED" }) do
-	ns.On(event, function()
-		if not hooked then return end
+	ns.On(event, function(reason)
+		if event == "FCT_LAYOUT_CHANGED" and reason == "remap" then return end
 		ns.whenPadFree("dominos modifiers", syncMods)
-		refreshHotkeys()
+		if hooked then refreshHotkeys() end
 	end)
 end
 
--- A Dominos cell replaced or cleared (in /fct or here): its game binding on the same combo goes too.
-ns.On("FCT_DOMINOS_CELL_LEFT", function(code, layer, old)
-	if InCombatLockdown() then return end
-	local name = tostring(old.id):match("^dominos:(.+)$")
-	local native = ns.Face.CODE_KEY[code]
-	if not (name and native and PREFIX[layer]) then return end
-	local key = PREFIX[layer] .. native
-	local frame = _G[name]
-	local command = type(frame) == "table" and frame.GetAttribute and frame:GetAttribute("commandName")
-	local action = GetBindingAction(key)
-	if action == "" or not (action == command or action:match("^CLICK ([^:]+):") == name) then return end
+-- True when key's game binding clicks this action bar button (Dominos' "CLICK <button>:HOTKEY" or its command name).
+-- name nil: any protected action bar button (Dominos, Bartender).
+local function clicksButton(action, name)
+	local target = action:match("^CLICK ([^:]+):")
+	local frame = _G[name or target or ""]
+	if type(frame) ~= "table" or not (frame.IsProtected and frame:IsProtected() and frame.GetAttribute) then return false end
+	if name then return target == name or action == frame:GetAttribute("commandName") end
+	return target ~= nil and frame:GetAttribute("action") ~= nil
+end
+
+local function unbind(key, why)
 	SetBinding(key, nil)
 	local save = SaveBindings or AttemptToSaveBindings
 	if save then save(GetCurrentBindingSet()) end
-	ns.debug("dominos: %s unbound with its cell %s/%s", key, code, layer)
+	ns.debug("dominos: %s unbound (%s)", key, why)
+end
+
+-- A cell set in /fct (or here) takes its combo from any action bar button bound to it, so the two never disagree:
+-- a Dominos cell replaced or cleared drops that button's binding, and any other action placed there drops a button
+-- binding on the same combo (it would fight the router for the key with the Gamepad UI off).
+ns.On("FCT_CELL_SET", function(code, layer, new, old)
+	if InCombatLockdown() or (new and new.kind == "dominos") then return end
+	local native = ns.Face.CODE_KEY[code]
+	if not (native and PREFIX[layer]) then return end
+	local key = PREFIX[layer] .. native
+	local action = GetBindingAction(key)
+	if action == "" then return end
+	local oldName = old and old.kind == "dominos" and tostring(old.id):match("^dominos:(.+)$")
+	if oldName and clicksButton(action, oldName) then return unbind(key, "its cell " .. code .. "/" .. layer .. " changed") end
+	if new and clicksButton(action) then unbind(key, "cell " .. code .. "/" .. layer .. " took it") end
 end)
 
 -- /fct dominos [mods on|off]: the state, or the emulated modifiers on or off.
@@ -258,6 +278,7 @@ function ns.commands.dominos(args)
 	if word == "mods" and (value == "on" or value == "off") then
 		store().mods = value == "on"
 		syncMods()
+		ns.Face.Refresh()
 		refreshHotkeys()
 		ns.log("Dominos: controller Shift/Ctrl " .. (value == "on" and "on while the Gamepad UI is off" or "off (your own settings are back)"))
 		return

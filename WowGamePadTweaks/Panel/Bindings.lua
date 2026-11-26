@@ -106,10 +106,10 @@ local function slotInBar(key)
 end
 
 -- Storage slot of a layer cell, nil for the reserved top-bar face slots, a paddle, a stick press or without the
--- gamepad action bars.
+-- gamepad action bars, or while the Gamepad UI is off (every cell is routed then).
 local function storageSlot(code, layer)
 	local util = GamepadActionBarBindingUtil
-	if not util or UI.MOD_CODES[code] or STICKS[code] then return end
+	if not util or not ns.Active() or UI.MOD_CODES[code] or STICKS[code] then return end
 
 	local constants = Constants.GamepadActionBarConstants
 	local perBar = constants and constants.NUM_SLOTS_PER_GAMEPAD_ACTION_BAR or 8

@@ -483,6 +483,8 @@ end
 -- else goes into the cell's storage slot (Actions.Assign), D-pad base layer included. A paddle has no storage slot.
 function Face.Routable(code, layer, entry)
 	if not (CODE_KEY[code] and CELL_LAYER[layer]) then return false end
+	-- With the Gamepad UI off there are no crossbar slots: every cell goes through the router.
+	if not ns.Active() then return true end
 	if NO_SLOT[code] or layer == "T" and CODE_POS[code] then return true end
 	return not not (entry and not ns.Actions.SLOT_KINDS[ns.Actions.KindOf(entry)])
 end
@@ -577,8 +579,8 @@ function Face.SetCellEntry(code, layer, entry, page)
 	local old = row[layer]
 	row[layer] = new
 	list[code] = next(row) and row or nil
-	-- A Dominos button replaced or cleared here: DominosBind.lua drops its matching game binding too.
-	if old and old.kind == "dominos" and not (new and new.id == old.id) then ns.Fire("FCT_DOMINOS_CELL_LEFT", code, layer, old) end
+	-- DominosBind.lua keeps action bar button bindings on the same combo in step.
+	if not (old and new and old.id == new.id) then ns.Fire("FCT_CELL_SET", code, layer, new, old) end
 	ns.Fire("FCT_LAYOUT_CHANGED", "layout")
 	return true
 end
@@ -653,8 +655,14 @@ local APPLY_SNIPPET = ([[
 		return
 	end
 	for i = 1, %d do
+		local router = self:GetAttribute("ps-router" .. i)
 		local key = self:GetAttribute("ps-key" .. i)
-		if key then self:SetBindingClick(false, key, self:GetAttribute("ps-router" .. i), "LeftButton") end
+		if key then self:SetBindingClick(false, key, router, "LeftButton") end
+		-- With the Gamepad UI off and the modifiers acting as Shift and Ctrl, a key per routed layer.
+		for n = 2, 4 do
+			key = self:GetAttribute("ps-key" .. i .. "-" .. n)
+			if key then self:SetBindingClick(false, key, router, "LeftButton") end
+		end
 	end
 ]]):format(#CODES, #CODES)
 -- A state change drops a press in flight, so a later release can't go to the button it was aimed at.
@@ -848,11 +856,22 @@ local function sameFace(face)
 	return true
 end
 
+-- The key a crossbar modifier's button outputs now: its role key while our remap runs (Gamepad UI on), else the native
+-- key of the button holding the role (the game's native config is applied while the Gamepad UI is off).
+local function modKey(role)
+	if ns.Active() then return Layout.RoleKey(role) end
+	for phys, held in pairs(Layout.Roles()) do
+		if held == role then return Layout.NATIVE_KEY[phys] end
+	end
+end
+Face.ModKey = modKey
+
 -- GetGamePadState().buttons indexes of the crossbar modifiers, { leftmod, rightmod }; Touch.lua picks layers by them too.
 local function modifierIndexes()
 	local out = {}
 	for _, role in ipairs(MOD_ROLES) do
-		local index = C_GamePad.ButtonBindingToIndex(Layout.RoleKey(role))
+		local key = modKey(role)
+		local index = key and C_GamePad.ButtonBindingToIndex(key)
 		out[role] = index and index + 1
 	end
 	return out
@@ -970,8 +989,13 @@ local function updateBindCells()
 	local live = next(bindCells) and header:GetAttribute("state-face") == "routed" and header:GetAttribute("ps-enabled") and ns.padFree()
 	local want, mods = {}, live and modifierIndexes()
 	for _, cell in ipairs(live and bindCells or {}) do
-		local command = cell.layers[currentLayer(cell, mods)]
-		if command then want[cell.key] = command end
+		if cell.static then
+			-- Gamepad UI off: each layer has its own key (Face.OFF_PREFIX), bound whatever is held.
+			for key, command in pairs(cell.static) do want[key] = command end
+		else
+			local command = cell.layers[currentLayer(cell, mods)]
+			if command then want[cell.key] = command end
+		end
 	end
 	for key, command in pairs(bound) do
 		if want[key] ~= command then
@@ -1086,6 +1110,31 @@ local function clearUnderRouted()
 	return done
 end
 
+-- With the Gamepad UI off a router has no crossbar: no native targets, targeting or override bars, only its routed
+-- cells (a hold action's button by name) and the modifier indexes.
+local function aimOff(router, routes, mods)
+	for layer in pairs(BARS) do
+		router:SetAttribute("ps-" .. layer, nil)
+		router:SetAttribute("frameref-bar-" .. layer, nil)
+		router:SetAttribute("frameref-slot-" .. layer, nil)
+	end
+	router:SetAttribute("ps-top", nil)
+	router:SetAttribute("frameref-slot-top", nil)
+	for cellLayer, layer in pairs(CELL_LAYER) do
+		local route = routes[cellLayer]
+		router:SetAttribute("ps-" .. layer, route and route[1] == "hold" and route[2] or nil)
+	end
+	for role, index in pairs(mods) do router:SetAttribute("ps-i" .. role, index) end
+	for _, override in ipairs(OVERRIDES) do router:SetAttribute("ps-" .. override.kind .. "layer", nil) end
+end
+
+-- The game key each layer of a cell takes while the Gamepad UI is off and the crossbar modifiers act as Shift and Ctrl
+-- (DominosBind.lua): the modifier buttons make it a different key per layer, so a layer without a cell keeps the
+-- key's own binding.
+local OFF_PREFIX = { T = "", L = "SHIFT-", R = "CTRL-", B = "CTRL-SHIFT-" }
+Face.OFF_PREFIX = OFF_PREFIX
+local MAX_KEYS = 4
+
 -- ignorePanel: combat is starting and the settings screen closes in the same frame.
 local function applyNow(ignorePanel)
 	setup()
@@ -1095,7 +1144,13 @@ local function applyNow(ignorePanel)
 	local face, actionBars = Layout.Face(), bars()
 	local known = cells()
 	local list = known or {}
-	local enabled = ns.Active() and (ignorePanel or not ns.panelOpen) and (not sameFace(face) or next(list)) and actionBars and button(actionBars, "topBar", 5)
+	-- Gamepad UI off: only the routed cells run (no crossbar, no face moves), on keys per layer while the modifiers act
+	-- as Shift and Ctrl, else on the button's own key with the router reading the held modifiers.
+	local off = not ns.Active()
+	local prefixed = off and ns.DominosBind and ns.DominosBind.ModsOn()
+	local enabled
+	if off then enabled = (ignorePanel or not ns.panelOpen) and next(list) and true
+	else enabled = (ignorePanel or not ns.panelOpen) and (not sameFace(face) or next(list)) and actionBars and button(actionBars, "topBar", 5) end
 	local mods, unresolved, parts, short = modifierIndexes(), {}, {}, {}
 	wipe(bindCells)
 	-- Shadow slots are written only with the Gamepad UI on (bars 6-8 are the player's otherwise), out of combat and
@@ -1108,7 +1163,7 @@ local function applyNow(ignorePanel)
 		ns.MigrateChar("routedUnderDone", clearUnderRouted)
 	end
 	for i, code in ipairs(CODES) do
-		local router, key, pos, row = routers[i], keyOf(code), CODE_POS[code], list[code] or {}
+		local router, key, pos, row = routers[i], off and CODE_KEY[code] or keyOf(code), CODE_POS[code], list[code] or {}
 		local action, label, routes = pos and face[pos], pos or code, {}
 		-- A paddle with a role keeps its cells, unrouted and without shadow slots, until it is freed again.
 		local carried = not PADDLES[code] or Face.PaddleFree(code)
@@ -1126,11 +1181,30 @@ local function applyNow(ignorePanel)
 			-- A cell that no longer holds a slot kind gives its shadow slot back.
 			if writable and not slotKind then Actions.ReleaseShadow(code, cellLayer) end
 			local where = label .. (cellLayer == "T" and "" or "/" .. cellLayer)
+			-- Off: a face action needs its crossbar button, and a Dominos button fires from its own game binding.
+			if off and (how == "click" or how == "dominos") then
+				if how == "click" then parts[#parts + 1] = string.format("%s %s needs the Gamepad UI", where, tostring(entry.id)) end
+				how = nil
+				entry = nil
+			end
 			if how then routes[cellLayer] = { how, value, entry.name } end
 			if entry and not how then parts[#parts + 1] = string.format("%s entry %s unavailable", where, tostring(entry.id)) end
 		end
-		local moved = enabled and (next(routes) or (pos and action ~= Layout.NATIVE_FACE[pos]))
-		local slot = moved and aim(router, actionBars, code, action, routes, mods, unresolved) or nil
+		local moved = enabled and (next(routes) or (not off and pos and action ~= Layout.NATIVE_FACE[pos]))
+		local slot
+		if moved and off then aimOff(router, routes, mods)
+		elseif moved then slot = aim(router, actionBars, code, action, routes, mods, unresolved) end
+		-- The keys this router takes: its button's key, or off with the modifiers on, one per routed layer (a bind
+		-- layer's key goes to the listener alone).
+		local keys = {}
+		if moved and prefixed then
+			for _, cellLayer in ipairs(CELL_LAYERS) do
+				local route = routes[cellLayer]
+				if route and route[1] ~= "bind" then keys[#keys + 1] = OFF_PREFIX[cellLayer] .. key end
+			end
+		elseif moved then
+			keys[1] = key
+		end
 		local bindings
 		for cellLayer, layer in pairs(CELL_LAYER) do
 			local route = routes[cellLayer]
@@ -1140,6 +1214,11 @@ local function applyNow(ignorePanel)
 			if how == "bind" then
 				bindings = bindings or { key = key, layers = {}, targets = {} }
 				bindings.layers[layer] = route[2]
+				-- Off: a fixed binding per layer key (only the base layer's without the modifiers).
+				if off then
+					bindings.static = bindings.static or {}
+					if prefixed or cellLayer == "T" then bindings.static[OFF_PREFIX[cellLayer] .. key] = route[2] end
+				end
 			end
 			router:SetAttribute("ps-action-" .. layer, how == "action" and route[2] or nil)
 			router:SetAttribute("ps-ring-" .. layer, how == "ring" and route[2] or nil)
@@ -1147,11 +1226,12 @@ local function applyNow(ignorePanel)
 			shadowOf[code .. "/" .. cellLayer] = route and route[1] == "action" and route[2] or nil
 			dominosOf[code .. "/" .. cellLayer] = how == "dominos" and route[2] or nil
 			-- A moved face action on the base layer is a routed cell too.
-			local shown = how and route or slot and cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and { "click", action } or nil
+			local shown = not off and (how and route or slot and cellLayer == "T" and pos and action ~= Layout.NATIVE_FACE[pos] and { "click", action }) or nil
 			local catcher = shown and slot and catcherFor(actionBars, code, cellLayer, slot) or catchers[code .. "/" .. cellLayer]
 			if catcher then aimCatcher(catcher, shown or nil, actionBars) end
 		end
-		header:SetAttribute("ps-key" .. i, moved and key or nil)
+		header:SetAttribute("ps-key" .. i, keys[1])
+		for n = 2, MAX_KEYS do header:SetAttribute("ps-key" .. i .. "-" .. n, keys[n]) end
 		-- The targeting bars that take the top layer's place while shown, as the router reads them.
 		for kind in pairs(bindings and bindings.layers.top and TARGET_LAYERS or {}) do
 			local target = slot and button(actionBars, BARS[kind], slot)
@@ -1284,6 +1364,7 @@ function refresh()
 	if not InCombatLockdown() and ns.padFree() then return apply() end
 	ns.whenPadFree("face router", apply)
 end
+Face.Refresh = function() refresh() end
 
 -- The settings screen owns the pad while open.
 ns.On("FCT_PANEL_OPEN", function() refresh() end)
