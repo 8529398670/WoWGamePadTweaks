@@ -1410,6 +1410,7 @@ local function apply(ignorePanel)
 
 	local message = tostring(err):match("^[^\n]*"):gsub("^.-([%w_]+%.lua:%d+:)", "%1")
 	ns.debug("face apply failed: %s", tostring(err))
+	ns.RecordError("face apply: " .. tostring(err))
 	if not failed then ns.log("button routing skipped an update after an error (/reload to retry): " .. message) end
 	failed = true
 end

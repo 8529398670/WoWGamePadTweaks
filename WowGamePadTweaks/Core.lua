@@ -13,7 +13,10 @@
 --                                  They wait forever unless opts.timeout (seconds) is set; user commands use 15.
 --                                  opts may also be a plain boolean, meaning combatOk.
 --   ns.log(msg)                    one chat line.
---   ns.debug(fmt, ...)             appends to ns.db.debugLog (capped) when /fct debug on.
+--   ns.debug(fmt, ...)             appends to ns.db.debugLog (capped), always; /fct debug on only adds the verbose
+--                                  lines (per press, taint watch).
+--   ns.RecordError(msg, stack)     keeps a Lua error in ns.db.errorLog (the last ERROR_CAP, a repeat counted on the
+--                                  newest). Every Lua error goes there through the error handler; caught ones too.
 --   ns.padFree()                   true while only the core binding set is active (always true while inactive).
 --   ns.OnBlocked(event, addon, func)
 --                                  the one ADDON_ACTION_BLOCKED/FORBIDDEN reporter (Core registers both events): debug
@@ -97,6 +100,7 @@ function run(msg, fn, ...)
 	if ok then return end
 
 	ns.debug("%s listener error: %s", msg, tostring(err))
+	ns.RecordError(msg .. " listener: " .. tostring(err), debugstack and debugstack(2, 8, 0))
 	if not errorTold[fn] then ns.log("an error in " .. msg .. " was skipped — please /reload and report: " .. tostring(err)) end
 	errorTold[fn] = true
 end
@@ -110,7 +114,7 @@ local debugAt, lastDebug = 0, nil
 
 function ns.debug(fmt, ...)
 	local db = ns.db
-	if not (db and db.options.debug) then return end
+	if not db then return end
 
 	local log = db.debugLog
 	lastDebug = date("%H:%M:%S ") .. string.format(fmt, ...)
@@ -120,6 +124,52 @@ function ns.debug(fmt, ...)
 	end
 	debugAt = debugAt % DEBUG_CAP + 1
 	log[debugAt] = lastDebug
+end
+
+-- The last Lua errors, newest last, kept across reloads (SavedVariables): { at, count, msg, stack } each. A Lua
+-- error from any addon lands here, so a "nothing works" report can be read from the file afterwards.
+local ERROR_CAP = 30
+
+function ns.RecordError(msg, stack)
+	local db = ns.db
+	if not db then return end
+	if type(db.errorLog) ~= "table" then db.errorLog = {} end
+	local log, text = db.errorLog, tostring(msg)
+	local last = log[#log]
+	if type(last) == "table" and last.msg == text then
+		last.count, last.at = (last.count or 1) + 1, date("%Y-%m-%d %H:%M:%S")
+		return
+	end
+	log[#log + 1] = { at = date("%Y-%m-%d %H:%M:%S"), count = 1, msg = text, stack = stack and tostring(stack):sub(1, 2000) or nil }
+	while #log > ERROR_CAP do table.remove(log, 1) end
+	ns.debug("lua error: %s", text:match("^[^\n]*"))
+end
+
+-- Chained in front of whatever handler is set now (Blizzard's, or an error-catching addon's), which still shows the
+-- error as before. Never errors itself.
+do
+	local previous = geterrorhandler and geterrorhandler()
+	if previous and seterrorhandler then
+		seterrorhandler(function(msg, ...)
+			pcall(ns.RecordError, msg, debugstack and debugstack(3, 12, 0))
+			return previous(msg, ...)
+		end)
+	end
+end
+
+-- /fct errors: the last few saved errors; /fct errors clear empties the list.
+function ns.commands.errors(args)
+	if args[1] == "clear" then
+		ns.db.errorLog = {}
+		return ns.log("error log cleared")
+	end
+	local log = type(ns.db.errorLog) == "table" and ns.db.errorLog or {}
+	if #log == 0 then return ns.log("no Lua errors saved") end
+	ns.log(("%d saved Lua error%s (WowGamePadTweaksDB.errorLog), newest last:"):format(#log, #log == 1 and "" or "s"))
+	for i = math.max(1, #log - 4), #log do
+		local e = log[i]
+		ns.log(("%s x%d: %s"):format(tostring(e.at), e.count or 1, tostring(e.msg):match("^[^\n]*")))
+	end
 end
 
 local function unroll(log)
@@ -565,7 +615,7 @@ local HELP = "/fct (or /controllertweaks) opens the settings; so do L2 + R2 + Cr
 	.. " | preset native|split | role <L1 R1 L2 R2 P1-P4> <leftmod rightmod friendly hostile none>"
 	.. " | face <bottom right left top> <interact inspect back jump> | learn <L1 R1 L2 R2 P1-P4>|cancel | reset (the layout)"
 	.. " | whatsnew (what's new in this version; turns it back on) | cleanup (finds duplicate FCT: macros and stray hidden slots and tidies them)"
-	.. " | profile (this character's) | profile <name> (this character plays on it) | sync (status; now, on, off, undo) | export | import | release (gives back every slot and macro before uninstalling) | dominos (controller buttons in Dominos binding mode; mods on|off) | status | selftest | ringlog | debug on|off | help"
+	.. " | profile (this character's) | profile <name> (this character plays on it) | sync (status; now, on, off, undo) | export | import | release (gives back every slot and macro before uninstalling) | dominos (controller buttons in Dominos binding mode; mods on|off) | status | errors (the last saved Lua errors; clear) | selftest | ringlog | debug on|off | help"
 
 function ns.commands.help() ns.log(HELP) end
 

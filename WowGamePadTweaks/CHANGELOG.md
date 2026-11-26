@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.5 — 2026-11-25
+
+### Fixed: the Bindings window stopped drawing in 1.7.4
+- The Bindings window broke off after its first row of buttons (an error in the new Targeting page), so nothing could be changed in /fct. It draws fully again.
+- **/fct dominos** gave an error instead of its status. Fixed.
+
+### New: Lua errors are always saved
+- Every Lua error (from any addon) is now kept in the settings file, the last 30, even after a /reload or logout. **/fct errors** shows the newest ones; **/fct errors clear** empties the list.
+- The debug log now always keeps its last lines too, not only after /fct debug on.
+
 ## 1.7.4 — 2026-11-25
 
 ### New: friendly and hostile targeting with the Gamepad UI off

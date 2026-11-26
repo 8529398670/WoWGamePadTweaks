@@ -27,17 +27,6 @@ local function pageCount()
 	return n
 end
 
--- The Targeting page's number, or nil with the Gamepad UI on (its own targeting bars do that then).
-local function targetingPage() return not ns.Active() and pageCount() + 1 or nil end
-local function totalPages() return pageCount() + (ns.Active() and 0 or 1) end
-local function onTargeting() return page == targetingPage() end
--- The layer of each cell column on the shown page.
-local function columns() return onTargeting() and TARGET_LAYERS or LAYERS end
-local function pageLabel(n)
-	if n == targetingPage() then return L.TARGETING_PAGE end
-	return string.format(L.PAGE_OF, n, pageCount())
-end
-
 -- The stance / pet override bars replace one layer on a page (CVars GamepadStanceBarOverride and
 -- GamepadPossessBarOverride, read only; Enum names like "Page1LeftBar"). Returns a note for the current page.
 local OVERRIDE_CVARS = { { "GamepadStanceBarOverride", L.OVERRIDE_BARS.GamepadStanceBarOverride }, { "GamepadPossessBarOverride", L.OVERRIDE_BARS.GamepadPossessBarOverride } }
@@ -61,6 +50,17 @@ local TARGET_LAYERS = { "F", "H" }
 local LAYER_ROLE = { T = "top", L = "leftmod", R = "rightmod", B = "bottom", F = "friendly", H = "hostile" }
 local ROLE_LAYER = { leftmod = "L", rightmod = "R", bottom = "B", friendly = "F", hostile = "H" }
 local LAYER_INDEX = { T = 1, L = 2, R = 3, B = 4, F = 1, H = 2 }
+
+-- The Targeting page's number, or nil with the Gamepad UI on (its own targeting bars do that then).
+local function targetingPage() return not ns.Active() and pageCount() + 1 or nil end
+local function totalPages() return pageCount() + (ns.Active() and 0 or 1) end
+local function onTargeting() return page == targetingPage() end
+-- The layer of each cell column on the shown page.
+local function columns() return onTargeting() and TARGET_LAYERS or LAYERS end
+local function pageLabel(n)
+	if n == targetingPage() then return L.TARGETING_PAGE end
+	return string.format(L.PAGE_OF, n, pageCount())
+end
 
 -- Geometry (window units). Cells 34 (circles 32) on a 38 pitch; rows 38 tall on a 42 pitch in a box at each side, a
 -- layer header over each column's cells; both columns start level, the longer one centred in the area; the drawing

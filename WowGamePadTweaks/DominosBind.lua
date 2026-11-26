@@ -274,7 +274,7 @@ end)
 
 -- /fct dominos [mods on|off]: the state, or the emulated modifiers on or off.
 function ns.commands.dominos(args)
-	local word, value = (args or ""):lower():match("^(%S*)%s*(%S*)")
+	local word, value = (args[1] or ""):lower(), (args[2] or ""):lower()
 	if word == "mods" and (value == "on" or value == "off") then
 		store().mods = value == "on"
 		syncMods()
