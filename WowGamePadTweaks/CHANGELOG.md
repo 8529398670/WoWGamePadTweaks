@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.6 — 2026-11-25
+
+### Fixed: RT and R1 stopped working as Ctrl and Shift (Gamepad UI off)
+- With the Gamepad UI off, holding your modifier buttons did nothing after a login, so combos like **RT + D-pad up** (Auto-run) stopped working. The game kept the setting but didn't apply it. The addon now applies it again at every login, reload and controller connect.
+- The debug log notes each time it does, so it shows up in the saved logs.
+
 ## 1.7.5 — 2026-11-25
 
 ### Fixed: the Bindings window stopped drawing in 1.7.4

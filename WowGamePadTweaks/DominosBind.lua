@@ -167,8 +167,16 @@ local function syncMods()
 	if DominosBind.ModsOn() then
 		local left, right = modNatives()
 		if not saved.saved then saved.saved = { shift = GetCVar(EMULATE.shift), ctrl = GetCVar(EMULATE.ctrl) } end
-		setCVar(EMULATE.shift, left or "NONE")
-		setCVar(EMULATE.ctrl, right or "NONE")
+		-- Written again even when the saved value already matches: at login the game can hold the value without
+		-- applying it (RT stopped acting as Ctrl in 1.7.5 though GamePadEmulateCtrl read PADRTRIGGER), and only a
+		-- change makes it take effect.
+		for name, value in pairs({ [EMULATE.shift] = left or "NONE", [EMULATE.ctrl] = right or "NONE" }) do
+			if GetCVar(name) ~= nil then
+				SetCVar(name, "NONE")
+				SetCVar(name, value)
+			end
+		end
+		ns.debug("dominos modifiers applied: shift %s, ctrl %s", tostring(GetCVar(EMULATE.shift)), tostring(GetCVar(EMULATE.ctrl)))
 	elseif type(saved.saved) == "table" then
 		if saved.saved.shift then setCVar(EMULATE.shift, saved.saved.shift) end
 		if saved.saved.ctrl then setCVar(EMULATE.ctrl, saved.saved.ctrl) end
@@ -232,7 +240,7 @@ end
 ns.On("PLAYER_LOGIN", setUp)
 ns.On("ADDON_LOADED", setUp)
 -- Roles decide the modifier buttons; a cell change alone needs nothing here.
-for _, event in ipairs({ "FCT_ACTIVE_CHANGED", "PLAYER_ENTERING_WORLD", "FCT_LAYOUT_CHANGED" }) do
+for _, event in ipairs({ "FCT_ACTIVE_CHANGED", "PLAYER_ENTERING_WORLD", "FCT_LAYOUT_CHANGED", "GAME_PAD_CONNECTED" }) do
 	ns.On(event, function(reason)
 		if event == "FCT_LAYOUT_CHANGED" and reason == "remap" then return end
 		ns.whenPadFree("dominos modifiers", syncMods)
